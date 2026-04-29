@@ -1,0 +1,189 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Language {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  topics           Topic[]
+  verbs            Verb[]
+  essays           Essay[]
+  trainingSessions TrainingSession[]
+
+  @@map("languages")
+}
+
+model Topic {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  languageId  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  language Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
+  words    Word[]
+
+  @@index([languageId])
+  @@map("topics")
+}
+
+model Word {
+  id            String    @id @default(uuid())
+  term          String
+  definition    String
+  topicId       String
+  source        String    @default("vocabulary") // 'vocabulary' | 'error'
+  occurrences   Int       @default(1)
+  attempts      Int       @default(0)
+  correctCount  Int       @default(0)
+  successRate   Float     @default(0)
+  srsLevel      Int       @default(0) // 0=new, 1-5=review intervals, 6=mastered
+  lastTrainedAt DateTime?
+  nextReviewAt  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([topicId])
+  @@index([successRate])
+  @@index([source])
+  @@index([nextReviewAt])
+  @@map("words")
+}
+
+model Verb {
+  id           String   @id @default(uuid())
+  infinitive   String
+  languageId   String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  language      Language         @relation(fields: [languageId], references: [id], onDelete: Cascade)
+  conjugations  VerbConjugation[]
+
+  @@index([languageId])
+  @@map("verbs")
+}
+
+model VerbConjugation {
+  id           String   @id @default(uuid())
+  verbId       String
+  tense        String
+  person       String
+  form         String
+  attempts     Int      @default(0)
+  correctCount Int      @default(0)
+  successRate  Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  verb Verb @relation(fields: [verbId], references: [id], onDelete: Cascade)
+
+  @@unique([verbId, tense, person])
+  @@index([verbId])
+  @@map("verb_conjugations")
+}
+
+model Essay {
+  id           String   @id @default(uuid())
+  title        String?
+  originalText String   @db.Text
+  languageId   String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  language    Language          @relation(fields: [languageId], references: [id], onDelete: Cascade)
+  corrections EssayCorrection[]
+
+  @@index([languageId])
+  @@map("essays")
+}
+
+model EssayCorrection {
+  id            String   @id @default(uuid())
+  essayId       String
+  correctedText String   @db.Text
+  feedback      String?  @db.Text
+  createdAt     DateTime @default(now())
+
+  essay  Essay   @relation(fields: [essayId], references: [id], onDelete: Cascade)
+  errors Error[]
+
+  @@index([essayId])
+  @@map("essay_corrections")
+}
+
+model Error {
+  id              String   @id @default(uuid())
+  correctionId    String
+  errorType       String
+  original        String
+  corrected       String
+  explanation     String?
+  position        Int?
+  attempts        Int      @default(0)
+  correctCount    Int      @default(0)
+  successRate     Float    @default(0)
+  convertedToWord Boolean  @default(false)
+  wordId          String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  correction EssayCorrection @relation(fields: [correctionId], references: [id], onDelete: Cascade)
+
+  @@index([correctionId])
+  @@index([errorType])
+  @@map("errors")
+}
+
+model TrainingSession {
+  id               String   @id @default(uuid())
+  name             String?
+  languageId       String
+  mode             String   // 'by-topic' or 'by-level'
+  trainingType     String   @default("batch") // 'batch' or 'srs'
+  topicId          String?
+  topicIds         String?  // comma-separated topic IDs for multi-topic
+  minErrorRate     Float?   // minimum error rate filter (0-100)
+  totalQuestions   Int
+  currentIndex     Int      @default(0)
+  completed        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  language  Language                  @relation(fields: [languageId], references: [id], onDelete: Cascade)
+  questions TrainingSessionQuestion[]
+
+  @@index([languageId])
+  @@index([completed])
+  @@map("training_sessions")
+}
+
+model TrainingSessionQuestion {
+  id        String   @id @default(uuid())
+  sessionId String
+  wordId    String
+  order     Int
+  type      String   // 'multiple_choice' or 'written'
+  answered  Boolean  @default(false)
+  correct   Boolean?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, order])
+  @@index([sessionId])
+  @@map("training_session_questions")
+}
