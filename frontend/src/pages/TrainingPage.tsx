@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { X, Volume2, Check, Calendar, Layers } from 'lucide-react';
+import { X, Volume2, Calendar, Layers } from 'lucide-react';
 import { trainingApi, topicsApi } from '../services/api';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { Checkbox } from '../components/ui/checkbox';
-import type { TrainingSession, TrainingQuestion, Topic } from '../types';
+import type { TrainingSession } from '../types';
 
 const FRENCH_CHARS = ['à', 'â', 'ç', 'é', 'è', 'ê', 'ë', 'í', 'î', 'ñ', 'ó', 'ù', '^'];
 const BATCH_SIZE = 7;
