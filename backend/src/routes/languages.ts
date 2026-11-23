@@ -3,6 +3,7 @@ import { languageController } from '../controllers/languageController';
 import { topicController } from '../controllers/topicController';
 import { verbController } from '../controllers/verbController';
 import { essayController } from '../controllers/essayController';
+import { wordController } from '../controllers/wordController';
 
 export const languageRouter = Router();
 
@@ -11,14 +12,19 @@ languageRouter.post('/', languageController.create);
 languageRouter.get('/:id', languageController.getById);
 languageRouter.put('/:id', languageController.update);
 languageRouter.delete('/:id', languageController.delete);
+languageRouter.get('/:id/due-counts', languageController.getDueCounts);
 
 // Topics for a language
 languageRouter.get('/:languageId/topics', topicController.getByLanguageId);
 languageRouter.post('/:languageId/topics', topicController.create);
 
+// Bulk vocabulary import (topic resolved by name; created if missing)
+languageRouter.post('/:languageId/vocab/import', wordController.importForLanguage);
+
 // Verbs for a language
 languageRouter.get('/:languageId/verbs', verbController.getByLanguageId);
 languageRouter.post('/:languageId/verbs', verbController.create);
+languageRouter.get('/:languageId/verbs/srs/daily', verbController.getSrsDaily);
 
 // Essays for a language
 languageRouter.get('/:languageId/essays', essayController.getByLanguageId);

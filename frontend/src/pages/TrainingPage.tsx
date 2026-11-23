@@ -32,6 +32,7 @@ export default function TrainingPage() {
 
   // Filter state
   const [trainingType, setTrainingType] = useState<'batch' | 'srs'>('batch');
+  const [sessionName, setSessionName] = useState('');
   const [selectedTopicIds, setSelectedTopicIds] = useState<Set<string>>(new Set());
   const [minErrorRate, setMinErrorRate] = useState<number>(0);
 
@@ -424,6 +425,18 @@ export default function TrainingPage() {
           <CardContent className="pt-8 pb-8 space-y-6">
             <h2 className="text-2xl font-bold text-center">Configurar entrenamiento</h2>
 
+            {/* Session name (for SRS) */}
+            {trainingType === 'srs' && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Nombre del entrenamiento</p>
+                <Input
+                  value={sessionName}
+                  onChange={(e) => setSessionName(e.target.value)}
+                  placeholder="Ej: Vocabulario General SRS"
+                />
+              </div>
+            )}
+
             {/* Training type */}
             <div className="space-y-2">
               <p className="text-sm font-medium">Tipo de entrenamiento</p>
@@ -477,8 +490,8 @@ export default function TrainingPage() {
 
             {/* Error rate filter */}
             <div className="space-y-2">
-              <p className="text-sm font-medium">Filtrar por tasa de error mínima</p>
-              <p className="text-xs text-muted-foreground">Solo palabras con error rate ≥ este valor (0 = todas, las no entrenadas siempre se incluyen)</p>
+              <p className="text-sm font-medium">Filtrar por nivel de dominio máximo</p>
+              <p className="text-xs text-muted-foreground">Solo palabras con dominio ≤ este valor (0 = todas, las no entrenadas siempre se incluyen)</p>
               <div className="flex items-center gap-3">
                 <input
                   type="range"
@@ -495,7 +508,26 @@ export default function TrainingPage() {
 
             <div className="flex gap-3 justify-center pt-2">
               <Button
-                onClick={() => startSessionMutation.mutate()}
+                onClick={() => {
+                  if (trainingType === 'srs') {
+                    // Create SRS session and navigate to SRS training page
+                    trainingApi.createSession({
+                      mode: 'by-level',
+                      trainingType: 'srs',
+                      topicIds: selectedTopicIds.size > 0 ? Array.from(selectedTopicIds).join(',') : undefined,
+                      languageId: languageId || undefined,
+                      limit: 10000,
+                      minErrorRate: minErrorRate > 0 ? minErrorRate : undefined,
+                    }).then(async (data) => {
+                      if (sessionName.trim()) {
+                        await trainingApi.renameSession(data.sessionId, sessionName.trim());
+                      }
+                      navigate(`/languages/${languageId}/srs-training?sessionId=${data.sessionId}`);
+                    });
+                  } else {
+                    startSessionMutation.mutate();
+                  }
+                }}
                 disabled={startSessionMutation.isPending}
                 size="lg"
               >

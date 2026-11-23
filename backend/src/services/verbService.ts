@@ -1,6 +1,6 @@
 import { prisma } from '../utils/prisma';
 import { CreateVerbDto } from '../types';
-import { calculateSuccessRate, validateAnswer } from '../utils/validation';
+import { calculateSuccessRate, validateConjugationAnswer } from '../utils/validation';
 import { getConjugation, getPersonsForTense, hasConjugations } from '../utils/frenchConjugations';
 
 // Common French verbs database
@@ -179,7 +179,7 @@ export const verbService = {
       throw new Error('Conjugation not found');
     }
 
-    const correct = validateAnswer(answer, conjugation.form);
+    const correct = validateConjugationAnswer(answer, conjugation.form);
 
     const newAttempts = conjugation.attempts + 1;
     const newCorrectCount = correct

@@ -25,3 +25,4 @@ npm-debug.log*
 
 # Prisma
 .env
+tts-cache/

@@ -43,8 +43,12 @@ export default function TrainingSessionsPage() {
     navigate(`/training?languageId=${languageId}&mode=by-level&new=true`);
   };
 
-  const handleContinueSession = (sessionId: string) => {
-    navigate(`/training?languageId=${languageId}&mode=by-level&sessionId=${sessionId}`);
+  const handleContinueSession = (session: TrainingSessionSummary) => {
+    if (session.trainingType === 'srs') {
+      navigate(`/languages/${languageId}/srs-training?sessionId=${session.sessionId}`);
+    } else {
+      navigate(`/training?languageId=${languageId}&mode=by-level&sessionId=${session.sessionId}`);
+    }
   };
 
   const handleStartEdit = (session: TrainingSessionSummary) => {
@@ -111,7 +115,7 @@ export default function TrainingSessionsPage() {
               <Card
                 key={session.sessionId}
                 className="hover:border-primary transition-all cursor-pointer group relative"
-                onClick={() => !editingId && handleContinueSession(session.sessionId)}
+                onClick={() => !editingId && handleContinueSession(session)}
               >
                 <CardHeader>
                   <div className="flex items-start justify-between gap-2">
@@ -223,25 +227,49 @@ export default function TrainingSessionsPage() {
                   </div>
 
                   {/* Stats */}
-                  <div className="grid grid-cols-2 gap-4 pt-2 border-t">
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Aprendidas</p>
-                      <p className="text-lg font-bold">{session.stats.answered}</p>
+                  {session.trainingType === 'srs' ? (
+                    <div className="space-y-3 pt-2 border-t">
+                      {(session.stats.todayCount ?? 0) > 0 && (
+                        <div className="p-2 bg-primary/5 rounded text-center">
+                          <span className="text-sm font-medium">Hoy: {session.stats.todayCount} palabras</span>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-1">Aprendidas</p>
+                          <p className="text-lg font-bold text-green-600">{session.stats.correct}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-1">En curso</p>
+                          <p className="text-lg font-bold text-amber-600">{session.stats.inProgress ?? 0}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-1">Pendientes</p>
+                          <p className="text-lg font-bold text-blue-600">{session.stats.pending ?? 0}</p>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Acierto</p>
-                      <p className="text-lg font-bold text-green-600">
-                        {accuracy}%
-                      </p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Aprendidas</p>
+                        <p className="text-lg font-bold">{session.stats.answered}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Acierto</p>
+                        <p className="text-lg font-bold text-green-600">
+                          {accuracy}%
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Action */}
                   {!editingId && (
                     <div className="pt-2" onClick={(e) => e.stopPropagation()}>
                       <Button
                         className="w-full"
-                        onClick={() => handleContinueSession(session.sessionId)}
+                        onClick={() => handleContinueSession(session)}
                       >
                         <Play className="w-4 h-4 mr-2" />
                         {session.completed ? 'Revisar' : 'Continuar'}

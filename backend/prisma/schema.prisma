@@ -8,16 +8,22 @@ datasource db {
 }
 
 model Language {
-  id        String   @id @default(uuid())
-  name      String
-  code      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                        String   @id @default(uuid())
+  name                      String
+  code                      String   @unique
+  forgetDays                Int      @default(180) // days after which mastered words decay back
+  sections                  String   @default("vocabulary,verbs,essays") // enabled sections, comma-separated
+  structureVariantsRequired Int      @default(2) // variants you must produce correctly per structure to level up its SRS
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 
   topics           Topic[]
   verbs            Verb[]
   essays           Essay[]
+  structures       Structure[]
+  grammarItems     GrammarItem[]
   trainingSessions TrainingSession[]
+  books            Book[]
 
   @@map("languages")
 }
@@ -47,18 +53,34 @@ model Word {
   attempts      Int       @default(0)
   correctCount  Int       @default(0)
   successRate   Float     @default(0)
+  recentResults String    @default("") // last 30 attempts: "1" correct, "0" wrong
+  weightedScore Float     @default(0)  // recency-weighted success rate (0-100)
   srsLevel      Int       @default(0) // 0=new, 1-5=review intervals, 6=mastered
   lastTrainedAt DateTime?
   nextReviewAt  DateTime?
+
+  // Dictation SRS — independent progression from the vocabulary SRS above.
+  // Same intervals (3/7/15/30/90) and max level (6), but tracked separately
+  // so knowing a word by definition doesn't imply knowing it by ear.
+  dictationSrsLevel      Int       @default(0)
+  dictationLastTrainedAt DateTime?
+  dictationNextReviewAt  DateTime?
+  dictationAttempts      Int       @default(0)
+  dictationCorrectCount  Int       @default(0)
+  dictationRecentResults String    @default("")
+  dictationWeightedScore Float     @default(0)
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  bookSavedWords BookSavedWord[]
 
   @@index([topicId])
   @@index([successRate])
   @@index([source])
   @@index([nextReviewAt])
+  @@index([dictationNextReviewAt])
   @@map("words")
 }
 
@@ -77,37 +99,89 @@ model Verb {
 }
 
 model VerbConjugation {
-  id           String   @id @default(uuid())
-  verbId       String
-  tense        String
-  person       String
-  form         String
-  attempts     Int      @default(0)
-  correctCount Int      @default(0)
-  successRate  Float    @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String    @id @default(uuid())
+  verbId        String
+  tense         String
+  person        String
+  form          String
+  attempts      Int       @default(0)
+  correctCount  Int       @default(0)
+  successRate   Float     @default(0)
+  recentResults String    @default("")
+  weightedScore Float     @default(0)
+  srsLevel      Int       @default(0)
+  lastTrainedAt DateTime?
+  nextReviewAt  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   verb Verb @relation(fields: [verbId], references: [id], onDelete: Cascade)
 
   @@unique([verbId, tense, person])
   @@index([verbId])
+  @@index([nextReviewAt])
   @@map("verb_conjugations")
 }
 
 model Essay {
   id           String   @id @default(uuid())
   title        String?
+  type         String   @default("libre") // 'synthese' | 'argumentation' | 'lettre' | 'journal' | 'libre'
   originalText String   @db.Text
   languageId   String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  language    Language          @relation(fields: [languageId], references: [id], onDelete: Cascade)
-  corrections EssayCorrection[]
+  language        Language               @relation(fields: [languageId], references: [id], onDelete: Cascade)
+  corrections     EssayCorrection[]
+  grammarRequests EssayGrammarRequest[]
 
   @@index([languageId])
   @@map("essays")
+}
+
+model GrammarItem {
+  id            String    @id @default(uuid())
+  languageId    String
+  title         String
+  body          String    @db.Text // markdown chunk explaining the item
+
+  attempts      Int       @default(0)
+  correctCount  Int       @default(0)
+  successRate   Float     @default(0)
+  recentResults String    @default("")
+  weightedScore Float     @default(0)
+
+  lastPracticedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  language        Language              @relation(fields: [languageId], references: [id], onDelete: Cascade)
+  essayRequests   EssayGrammarRequest[]
+
+  @@unique([languageId, title])
+  @@index([languageId])
+  @@map("grammar_items")
+}
+
+model EssayGrammarRequest {
+  id            String   @id @default(uuid())
+  essayId       String
+  grammarItemId String
+  used          Boolean  @default(false)
+  correct       Boolean  @default(false)
+  snippet       String?  @db.Text
+  note          String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+
+  essay       Essay       @relation(fields: [essayId], references: [id], onDelete: Cascade)
+  grammarItem GrammarItem @relation(fields: [grammarItemId], references: [id], onDelete: Cascade)
+
+  @@unique([essayId, grammarItemId])
+  @@index([essayId])
+  @@index([grammarItemId])
+  @@map("essay_grammar_requests")
 }
 
 model EssayCorrection {
@@ -164,6 +238,7 @@ model TrainingSession {
 
   language  Language                  @relation(fields: [languageId], references: [id], onDelete: Cascade)
   questions TrainingSessionQuestion[]
+  srsWords  TrainingSessionSRS[]
 
   @@index([languageId])
   @@index([completed])
@@ -186,4 +261,183 @@ model TrainingSessionQuestion {
   @@unique([sessionId, order])
   @@index([sessionId])
   @@map("training_session_questions")
+}
+
+model TrainingSessionSRS {
+  id            String    @id @default(uuid())
+  sessionId     String
+  wordId        String
+  srsLevel      Int       @default(0)
+  lastTrainedAt DateTime?
+  nextReviewAt  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  session TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, wordId])
+  @@index([sessionId])
+  @@index([nextReviewAt])
+  @@map("training_session_srs")
+}
+
+model Structure {
+  id            String    @id @default(uuid())
+  pattern       String    // "He may not be able to ___" or "Off the top of my head"
+  hasSlot       Boolean   @default(true)
+  category      String    // uncertainty, opinion, clarification, time-buying, ...
+  languageId    String
+
+  srsLevel      Int       @default(0)
+  lastTrainedAt DateTime?
+  nextReviewAt  DateTime?
+
+  attempts      Int       @default(0)
+  correctCount  Int       @default(0)
+  successRate   Float     @default(0)
+  recentResults String    @default("")
+  weightedScore Float     @default(0)
+
+  exampleCount  Int       @default(5) // number of translation examples for this structure
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  language        Language            @relation(fields: [languageId], references: [id], onDelete: Cascade)
+  examples        StructureExample[]
+  attemptsLog     StructureAttempt[]
+
+  @@index([languageId])
+  @@index([nextReviewAt])
+  @@map("structures")
+}
+
+model StructureExample {
+  id            String    @id @default(uuid())
+  structureId   String
+  text          String    // target-language sentence (french/english) used as reference for validation
+  spanish       String?   // spanish prompt the user translates from; null on legacy rows
+  order         Int       @default(0)
+  attempts      Int       @default(0)
+  correctCount  Int       @default(0)
+  lastTrainedAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
+
+  structure Structure @relation(fields: [structureId], references: [id], onDelete: Cascade)
+
+  @@index([structureId])
+  @@map("structure_examples")
+}
+
+model StructureAttempt {
+  id             String   @id @default(uuid())
+  structureId    String
+  cue            String
+  userResponse   String
+  verdict        String   // 'valid' | 'awkward' | 'invalid' | 'timeout'
+  suggestion     String?
+  responseTimeMs Int
+  withinLimit    Boolean
+  createdAt      DateTime @default(now())
+
+  structure Structure @relation(fields: [structureId], references: [id], onDelete: Cascade)
+
+  @@index([structureId])
+  @@index([createdAt])
+  @@map("structure_attempts")
+}
+
+model Book {
+  id             String   @id @default(uuid())
+  languageId     String
+  title          String
+  author         String?
+  status         String   @default("ready") // extracting | ready | error
+  error          String?
+  totalPages     Int      @default(0)
+  totalWords     Int      @default(0)
+  lastPageIndex  Int      @default(0)
+  inputTokens    Int      @default(0)
+  outputTokens   Int      @default(0)
+  cacheReadTokens Int     @default(0)
+  sourceMime     String?
+  sourceData     Bytes?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  language   Language        @relation(fields: [languageId], references: [id], onDelete: Cascade)
+  pages      BookPage[]
+  savedWords BookSavedWord[]
+  summaries  BookSummary[]
+  bookmarks  BookBookmark[]
+  highlights BookHighlight[]
+  @@index([languageId])
+  @@map("books")
+}
+
+model BookPage {
+  id           String    @id @default(uuid())
+  bookId       String
+  index        Int
+  chapterTitle String?
+  text         String
+  tokens       Json
+  annotations  Json?
+  annotatedAt  DateTime?
+  annotationVersion Int?
+  annotating   Boolean   @default(false)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  @@unique([bookId, index])
+  @@map("book_pages")
+}
+
+model BookSummary {
+  id          String   @id @default(uuid())
+  bookId      String
+  fromIndex   Int
+  toIndex     Int
+  text        String
+  tokens      Json
+  annotations Json
+  annotationVersion Int?
+  createdAt   DateTime @default(now())
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  @@unique([bookId, fromIndex, toIndex])
+  @@map("book_summaries")
+}
+
+model BookSavedWord {
+  id        String   @id @default(uuid())
+  bookId    String
+  wordId    String
+  lemma     String
+  createdAt DateTime @default(now())
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  word Word @relation(fields: [wordId], references: [id], onDelete: Cascade)
+  @@unique([bookId, lemma])
+  @@map("book_saved_words")
+}
+
+model BookBookmark {
+  id        String   @id @default(uuid())
+  bookId    String
+  pageIndex Int
+  createdAt DateTime @default(now())
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  @@unique([bookId, pageIndex])
+  @@map("book_bookmarks")
+}
+
+model BookHighlight {
+  id          String   @id @default(uuid())
+  bookId      String
+  pageIndex   Int
+  startToken  Int
+  endToken    Int
+  text        String
+  translation String?
+  createdAt   DateTime @default(now())
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  @@index([bookId, pageIndex])
+  @@map("book_highlights")
 }

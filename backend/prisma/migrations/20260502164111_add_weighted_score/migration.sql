@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "words" ADD COLUMN     "recentResults" TEXT NOT NULL DEFAULT '',
+ADD COLUMN     "weightedScore" DOUBLE PRECISION NOT NULL DEFAULT 0;

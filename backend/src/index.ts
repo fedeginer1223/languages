@@ -10,6 +10,11 @@ import { verbRouter } from './routes/verbs';
 import { essayRouter } from './routes/essays';
 import { statsRouter } from './routes/stats';
 import { srsRouter } from './routes/srs';
+import { structureRouter } from './routes/structures';
+import { grammarRouter } from './routes/grammar';
+import { ttsRouter } from './routes/tts';
+import { dictationRouter } from './routes/dictation';
+import { bookRouter } from './routes/books';
 import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
@@ -29,6 +34,11 @@ app.use('/api/v1/verbs', verbRouter);
 app.use('/api/v1/essays', essayRouter);
 app.use('/api/v1/stats', statsRouter);
 app.use('/api/v1/srs', srsRouter);
+app.use('/api/v1', structureRouter);
+app.use('/api/v1', grammarRouter);
+app.use('/api/v1', ttsRouter);
+app.use('/api/v1', dictationRouter);
+app.use('/api/v1', bookRouter);
 
 // Health check
 app.get('/health', (req, res) => {

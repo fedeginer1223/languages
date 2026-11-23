@@ -6,6 +6,9 @@ export interface CreateLanguageDto {
 export interface UpdateLanguageDto {
   name?: string;
   code?: string;
+  forgetDays?: number;
+  sections?: string;
+  structureVariantsRequired?: number;
 }
 
 export interface CreateTopicDto {
@@ -53,6 +56,16 @@ export interface CreateVerbDto {
 export interface CreateEssayDto {
   title?: string;
   text: string;
+  type?: string;
+  grammarItemIds?: string[];
+}
+
+export interface GrammarVerdict {
+  grammarItemId: string;
+  used: boolean;
+  correct: boolean;
+  snippet?: string;
+  note?: string;
 }
 
 export type ErrorType = 'accent' | 'grammar' | 'spelling' | 'other';
@@ -67,4 +80,5 @@ export interface CorrectionResult {
     explanation?: string;
     position?: number;
   }[];
+  grammarVerdicts?: GrammarVerdict[];
 }

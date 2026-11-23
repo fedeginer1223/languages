@@ -2,6 +2,9 @@ export interface Language {
   id: string;
   name: string;
   code: string;
+  forgetDays: number;
+  sections: string;
+  structureVariantsRequired: number;
   createdAt: string;
   stats?: {
     topicsCount: number;
@@ -36,6 +39,7 @@ export interface Word {
   attempts: number;
   correctCount: number;
   successRate: number;
+  weightedScore: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -58,6 +62,9 @@ export interface VerbConjugation {
   attempts: number;
   correctCount: number;
   successRate: number;
+  srsLevel?: number;
+  lastTrainedAt?: string | null;
+  nextReviewAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -65,11 +72,40 @@ export interface VerbConjugation {
 export interface Essay {
   id: string;
   title?: string;
+  type?: string;
   originalText: string;
   languageId: string;
   corrections: EssayCorrection[];
+  grammarRequests?: EssayGrammarRequest[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface GrammarItem {
+  id: string;
+  languageId: string;
+  title: string;
+  body: string;
+  attempts: number;
+  correctCount: number;
+  successRate: number;
+  recentResults: string;
+  weightedScore: number;
+  lastPracticedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EssayGrammarRequest {
+  id: string;
+  essayId: string;
+  grammarItemId: string;
+  used: boolean;
+  correct: boolean;
+  snippet?: string | null;
+  note?: string | null;
+  grammarItem?: GrammarItem;
+  createdAt: string;
 }
 
 export interface EssayCorrection {

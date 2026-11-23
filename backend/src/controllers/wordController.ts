@@ -50,6 +50,25 @@ export const wordController = {
     }
   },
 
+  async importForLanguage(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { topicName, words } = req.body ?? {};
+      if (!topicName || !Array.isArray(words)) {
+        return res.status(400).json({ error: 'topicName and words[] are required' });
+      }
+      const result = await wordService.importForLanguage(req.params.languageId, {
+        topicName,
+        words: words.map((w: any) => ({
+          term: String(w?.term ?? ''),
+          definition: String(w?.definition ?? ''),
+        })),
+      });
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async update(req: Request, res: Response, next: NextFunction) {
     try {
       const data: Partial<CreateWordDto> = req.body;

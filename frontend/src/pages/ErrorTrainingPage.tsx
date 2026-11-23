@@ -130,7 +130,7 @@ export default function ErrorTrainingPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentError || !answer.trim()) return;
+    if (!currentError) return;
 
     validateMutation.mutate(
       { errorId: currentError.id, answer },
@@ -343,7 +343,7 @@ export default function ErrorTrainingPage() {
                     className="text-lg py-6"
                   />
                   <div className="flex justify-end">
-                    <Button type="submit" size="lg" disabled={!answer.trim() || validateMutation.isPending}>
+                    <Button type="submit" size="lg" disabled={validateMutation.isPending}>
                       Responder
                     </Button>
                   </div>
@@ -360,27 +360,37 @@ export default function ErrorTrainingPage() {
                     {!isRetyping ? (
                       <>
                         <p className="text-orange-600 font-medium">¡No hay problema, todavía estás aprendiendo!</p>
-                        <div className="border-2 border-orange-400 bg-orange-50 rounded-lg p-4">
-                          <div className="flex items-start gap-3">
-                            <X className="w-5 h-5 text-orange-600 mt-1 flex-shrink-0" />
-                            <span className="text-lg">{answer}</span>
+                        {answer.trim() && (
+                          <div className="border-2 border-orange-400 bg-orange-50 rounded-lg p-4">
+                            <div className="flex items-start gap-3">
+                              <X className="w-5 h-5 text-orange-600 mt-1 flex-shrink-0" />
+                              <span className="text-lg">{answer}</span>
+                            </div>
                           </div>
-                        </div>
+                        )}
                         <div>
-                          <p className="text-sm font-medium mb-2">Respuesta correcta</p>
-                          <div className="border-2 border-green-600 border-dashed bg-green-50 rounded-lg p-4">
-                            <span className="text-lg font-medium">{result.expectedAnswer}</span>
-                          </div>
+                          <p className="text-sm font-medium mb-4">Respuesta correcta en contexto:</p>
+                          <p className="text-xl leading-relaxed p-4 bg-green-50 border-2 border-green-600 border-dashed rounded-lg">
+                            {currentError.sentence.split(new RegExp(`(${result.expectedAnswer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'i')).map((part, i) =>
+                              part.toLowerCase() === result.expectedAnswer.toLowerCase()
+                                ? <span key={i} className="text-green-600 font-bold">{part}</span>
+                                : <span key={i}>{part}</span>
+                            )}
+                          </p>
                         </div>
                         <p className="text-sm text-muted-foreground">Pulsa Enter para volver a escribirla</p>
                       </>
                     ) : (
                       <>
                         <div>
-                          <p className="text-sm font-medium mb-2">Respuesta correcta</p>
-                          <div className="border-2 border-green-600 border-dashed bg-green-50 rounded-lg p-4">
-                            <span className="text-lg font-medium">{result.expectedAnswer}</span>
-                          </div>
+                          <p className="text-sm font-medium mb-4">Respuesta correcta en contexto:</p>
+                          <p className="text-xl leading-relaxed p-4 bg-green-50 border-2 border-green-600 border-dashed rounded-lg">
+                            {currentError.sentence.split(new RegExp(`(${result.expectedAnswer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'i')).map((part, i) =>
+                              part.toLowerCase() === result.expectedAnswer.toLowerCase()
+                                ? <span key={i} className="text-green-600 font-bold">{part}</span>
+                                : <span key={i}>{part}</span>
+                            )}
+                          </p>
                         </div>
                         <p className="text-sm font-medium">Vuelve a escribir la respuesta correcta</p>
                         <div className="flex gap-1 flex-wrap">

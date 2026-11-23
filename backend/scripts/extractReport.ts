@@ -1,0 +1,24 @@
+import fs from 'fs';
+import { extractText, splitIntoPages } from '../src/utils/bookText';
+const med = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[s.length >> 1] : 0; };
+(async () => {
+  const buf = fs.readFileSync('/Users/federicohappyrobot/Downloads/Flaubert-Bovary.pdf');
+  const text = await extractText(buf, 'application/pdf');
+  const pages = splitIntoPages(text);
+  const paras: string[] = [];
+  pages.forEach((p) => paras.push(...p.text.split('\n\n')));
+  const wc = (s: string) => (s.match(/\S+/g) || []).length;
+  console.log('app pages', pages.length);
+  console.log('paragraphs', paras.length, 'median words', med(paras.map(wc)));
+  const heads = pages.map((p, i) => ({ i, t: p.chapterTitle })).filter((h) => h.t);
+  console.log('headings', heads.length);
+  heads.slice(0, 20).forEach((h) => console.log(`page ${h.i}: "${h.t}"`));
+  const leaked = paras.filter((p) => /\s\d{1,3}$/.test(p));
+  console.log('leaked page numbers', leaked.length, leaked.slice(0, 5).map((p) => p.slice(-50)));
+  const short = paras.filter((p) => wc(p) < 6);
+  console.log('short (<6 words)', short.length, short.slice(0, 10));
+  const show = (i: number) => console.log(`\n--- app page ${i} ---\n` + pages[i]?.text.replace(/\n\n/g, ' ¶ '));
+  show(0); show(1);
+  const ii = pages.findIndex((p) => p.chapterTitle === 'II');
+  console.log('first II at', ii); if (ii >= 0) show(ii);
+})();

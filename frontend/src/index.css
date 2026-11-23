@@ -100,7 +100,7 @@
   --sidebar-ring: #a1a1aa;
 
   --font-sans: var(--font-sans);
-  --font-serif: var(--font-serif);
+  --font-serif: 'Lora', Georgia, 'Times New Roman', serif;
   --font-mono: var(--font-mono);
   --radius: 0.625rem;
   --tracking-normal: 0em;
@@ -511,4 +511,14 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+}
+
+
+.reader-prose {
+  font-family: var(--font-serif);
+  color: #1c1917;
+  line-height: 2.05;
+  letter-spacing: 0.002em;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern", "liga", "onum";
 }

@@ -25,19 +25,57 @@ export const trainingService = {
     const sessions = await prisma.trainingSession.findMany({
       where: { languageId },
       include: {
-        questions: {
-          orderBy: { order: 'asc' },
-        },
+        questions: { orderBy: { order: 'asc' } },
+        srsWords: true,
       },
       orderBy: { updatedAt: 'desc' },
     });
 
     return sessions.map((s) => {
-      // Count unique words, not raw questions (each word has MC + written = 2 questions)
+      if (s.trainingType === 'srs') {
+        // SRS: progress from TrainingSessionSRS table
+        const total = s.srsWords.length;
+        const mastered = s.srsWords.filter((w) => w.srsLevel >= 6).length;
+        const inProgress = s.srsWords.filter((w) => w.srsLevel >= 1 && w.srsLevel < 6).length;
+        const pending = s.srsWords.filter((w) => w.srsLevel === 0 && !w.lastTrainedAt).length;
+
+        // Today count
+        const now = new Date();
+        const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+        const due = s.srsWords.filter((w) => w.srsLevel > 0 && w.srsLevel < 6 && w.nextReviewAt && w.nextReviewAt <= todayEnd).length;
+        let newToday = 0;
+        if (due <= 10) newToday = 7;
+        else if (due <= 20) newToday = 5;
+        else if (due <= 30) newToday = 3;
+        newToday = Math.min(newToday, pending);
+        const todayCount = due + newToday;
+
+        return {
+          sessionId: s.id,
+          name: s.name,
+          mode: s.mode,
+          trainingType: 'srs' as const,
+          totalQuestions: s.totalQuestions,
+          currentIndex: s.currentIndex,
+          completed: mastered >= total && total > 0,
+          createdAt: s.createdAt,
+          updatedAt: s.updatedAt,
+          stats: {
+            answered: inProgress + mastered, // en curso + aprendidas (for progress bar)
+            correct: mastered,
+            total,
+            accuracy: total > 0 ? Math.round((mastered / total) * 100) : 0,
+            inProgress,
+            pending,
+            todayCount,
+          },
+        };
+      }
+
+      // Batch: progress from TrainingSessionQuestion table
       const uniqueWordIds = new Set(s.questions.map((q) => q.wordId));
       const totalWords = uniqueWordIds.size;
 
-      // A word is "learned" if both MC and written are answered correctly
       const mcCorrect = new Set(s.questions.filter((q) => q.type === 'multiple_choice' && q.answered && q.correct).map((q) => q.wordId));
       const writtenCorrect = new Set(s.questions.filter((q) => q.type === 'written' && q.answered && q.correct).map((q) => q.wordId));
       const learnedWords = [...mcCorrect].filter((wid) => writtenCorrect.has(wid)).length;
@@ -49,7 +87,7 @@ export const trainingService = {
         sessionId: s.id,
         name: s.name,
         mode: s.mode,
-        trainingType: s.trainingType || 'batch',
+        trainingType: (s.trainingType || 'batch') as 'batch' | 'srs',
         totalQuestions: s.totalQuestions,
         currentIndex: s.currentIndex,
         completed: s.completed,
@@ -110,27 +148,14 @@ export const trainingService = {
 
     let allWords = topics.flatMap((t) => t.words);
 
-    // Filter by error rate: include words with successRate <= threshold OR untrained (attempts === 0)
+    // Filter by mastery: include words with weightedScore <= threshold OR untrained (attempts === 0)
     if (minErrorRate !== undefined && minErrorRate > 0) {
-      const maxSuccessRate = 100 - minErrorRate;
-      allWords = allWords.filter(w => w.attempts === 0 || w.successRate <= maxSuccessRate);
+      const maxScore = 100 - minErrorRate;
+      allWords = allWords.filter(w => w.attempts === 0 || w.weightedScore <= maxScore);
     }
 
-    // For SRS mode: only get words due for review + new words
-    if (trainingType === 'srs') {
-      const now = new Date();
-      const todayEnd = new Date(now);
-      todayEnd.setHours(23, 59, 59, 999);
-
-      const dueWords = allWords.filter(w =>
-        w.srsLevel > 0 && w.nextReviewAt && w.nextReviewAt <= todayEnd
-      );
-      const newWords = allWords.filter(w =>
-        w.srsLevel === 0 && !w.lastTrainedAt
-      ).slice(0, 7);
-
-      allWords = [...dueWords, ...newWords];
-    }
+    // For SRS mode: include ALL matching words (daily filtering happens in getDailyForSession)
+    // No filtering here — the session is the full package
 
     // Sort by difficulty
     allWords.sort((a, b) => {
@@ -204,6 +229,12 @@ export const trainingService = {
         },
       },
     });
+
+    // For SRS sessions, init the per-session SRS word tracking
+    if (trainingType === 'srs') {
+      const uniqueWordIds = [...new Set(words.map((w) => w.id))];
+      await srsService.initSession(dbSession.id, uniqueWordIds);
+    }
 
     return {
       sessionId: dbSession.id,

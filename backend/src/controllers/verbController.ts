@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { verbService } from '../services/verbService';
+import { verbSrsService } from '../services/verbSrsService';
 import { CreateVerbDto } from '../types';
 
 export const verbController = {
@@ -86,6 +87,39 @@ export const verbController = {
       const { answer } = req.body;
       const result = await verbService.validateConjugation(req.params.id, answer);
       res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getSrsDaily(req: Request, res: Response, next: NextFunction) {
+    try {
+      const languageId = req.params.languageId;
+      const newCount = req.query.newCount !== undefined ? parseInt(req.query.newCount as string) : undefined;
+      const selectionMode = (req.query.selectionMode as 'fifo' | 'lifo' | 'random') || 'fifo';
+      const verbIds = req.query.verbIds ? (req.query.verbIds as string).split(',').filter(Boolean) : undefined;
+      const tenses = req.query.tenses ? (req.query.tenses as string).split(',').filter(Boolean) : undefined;
+      const result = await verbSrsService.getDaily(languageId, newCount, selectionMode, verbIds, tenses);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async srsValidate(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { answer } = req.body;
+      const result = await verbSrsService.validateAttempt(req.params.id, answer ?? '');
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async srsAdvance(req: Request, res: Response, next: NextFunction) {
+    try {
+      const updated = await verbSrsService.advance(req.params.id);
+      res.json({ ok: true, srsLevel: updated.srsLevel, nextReviewAt: updated.nextReviewAt });
     } catch (error) {
       next(error);
     }

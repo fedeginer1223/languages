@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { languageService } from '../services/languageService';
+import { dueCountsService } from '../services/dueCountsService';
 import { CreateLanguageDto, UpdateLanguageDto } from '../types';
 
 export const languageController = {
@@ -45,6 +46,15 @@ export const languageController = {
     try {
       await languageService.delete(req.params.id);
       res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getDueCounts(req: Request, res: Response, next: NextFunction) {
+    try {
+      const counts = await dueCountsService.getForLanguage(req.params.id);
+      res.json(counts);
     } catch (error) {
       next(error);
     }

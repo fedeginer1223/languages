@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '../utils/prisma';
-import { CreateEssayDto, CorrectionResult, ErrorType } from '../types';
+import { CreateEssayDto, CorrectionResult, ErrorType, GrammarVerdict } from '../types';
+import { grammarService } from './grammarService';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -33,6 +34,10 @@ export const essayService = {
           },
           orderBy: { createdAt: 'desc' },
         },
+        grammarRequests: {
+          include: { grammarItem: true },
+          orderBy: { createdAt: 'asc' },
+        },
         language: true,
       },
     });
@@ -53,11 +58,20 @@ export const essayService = {
       throw new Error('Language not found');
     }
 
-    const correctionResult = await this.correctEssay(data.text, language.name);
+    // Load requested grammar items (if any) so the correction call can also
+    // evaluate whether the user used them.
+    const requestedItems = data.grammarItemIds && data.grammarItemIds.length > 0
+      ? await prisma.grammarItem.findMany({
+          where: { id: { in: data.grammarItemIds }, languageId },
+        })
+      : [];
+
+    const correctionResult = await this.correctEssay(data.text, language.name, requestedItems);
 
     const essay = await prisma.essay.create({
       data: {
         title: data.title,
+        type: data.type ?? 'libre',
         originalText: data.text,
         languageId,
         corrections: {
@@ -84,7 +98,38 @@ export const essayService = {
       await this.createErrorWords(languageId, correctionResult.errors);
     }
 
-    return essay;
+    // Persist grammar verdicts + update per-item dominio
+    if (requestedItems.length > 0) {
+      const verdicts: GrammarVerdict[] = correctionResult.grammarVerdicts ?? [];
+      const byId = new Map<string, GrammarVerdict>(verdicts.map((v) => [v.grammarItemId, v]));
+      const verdictByItemId: Record<string, boolean> = {};
+      for (const item of requestedItems) {
+        const v = byId.get(item.id);
+        const used = v?.used === true;
+        const correct = v?.correct === true;
+        await prisma.essayGrammarRequest.create({
+          data: {
+            essayId: essay.id,
+            grammarItemId: item.id,
+            used,
+            correct,
+            snippet: v?.snippet ?? null,
+            note: v?.note ?? null,
+          },
+        });
+        // Success in dominio terms = used AND correct.
+        verdictByItemId[item.id] = used && correct;
+      }
+      await grammarService.recordVerdicts(verdictByItemId);
+    }
+
+    return prisma.essay.findUnique({
+      where: { id: essay.id },
+      include: {
+        corrections: { include: { errors: true } },
+        grammarRequests: { include: { grammarItem: true } },
+      },
+    });
   },
 
   async createManual(languageId: string, data: {
@@ -227,7 +272,10 @@ export const essayService = {
   },
 
   async validateErrorAnswer(errorId: string, answer: string) {
-    const error = await prisma.error.findUnique({ where: { id: errorId } });
+    const error = await prisma.error.findUnique({
+      where: { id: errorId },
+      include: { correction: { include: { essay: true } } },
+    });
     if (!error) throw new Error('Error not found');
 
     const normalizedAnswer = answer.toLowerCase().trim().replace(/[.!?,;:]+$/, '');
@@ -242,6 +290,21 @@ export const essayService = {
       where: { id: errorId },
       data: { attempts: newAttempts, correctCount: newCorrectCount, successRate: newSuccessRate },
     });
+
+    // Also update the corresponding Word in "Errores de redacción" topic
+    const languageId = error.correction.essay.languageId;
+    const errorTopic = await prisma.topic.findFirst({
+      where: { languageId, name: 'Errores de redacción' },
+    });
+    if (errorTopic) {
+      const word = await prisma.word.findFirst({
+        where: { topicId: errorTopic.id, source: 'error', term: { equals: error.corrected, mode: 'insensitive' } },
+      });
+      if (word) {
+        const { wordService } = await import('./wordService');
+        await wordService.updateStats(word.id, correct);
+      }
+    }
 
     return {
       correct,
@@ -304,11 +367,33 @@ export const essayService = {
     return prisma.essay.delete({ where: { id } });
   },
 
-  async correctEssay(text: string, language: string): Promise<CorrectionResult> {
+  async correctEssay(
+    text: string,
+    language: string,
+    grammarItems: { id: string; title: string; body: string }[] = []
+  ): Promise<CorrectionResult> {
+    const grammarBlock = grammarItems.length > 0
+      ? `\n\nÍTEMS DE GRAMÁTICA QUE EL ESTUDIANTE INTENTABA PRACTICAR:
+${grammarItems.map((it, i) => `${i + 1}. [id="${it.id}"] ${it.title}\n${it.body}`).join('\n\n')}
+
+Para cada ítem, evalúa:
+- "used": true si el estudiante intentó usar ese recurso gramatical en la redacción (aunque sea con errores). false si simplemente no lo usó.
+- "correct": true si además lo usó CORRECTAMENTE. false si lo usó mal o no lo usó. Si used=false, correct debe ser false.
+- "snippet": el fragmento textual del original del estudiante donde intentó usarlo (o null si no lo usó).
+- "note": una nota breve (máx 25 palabras) explicando la evaluación. Si used=false, algo como "no aparece". Si used pero correct=false, señala el error concreto.`
+      : '';
+
+    const grammarJsonBlock = grammarItems.length > 0
+      ? `,
+  "grammarVerdicts": [
+    ${grammarItems.map((it) => `{"grammarItemId": "${it.id}", "used": bool, "correct": bool, "snippet": "…" | null, "note": "…"}`).join(',\n    ')}
+  ]`
+      : '';
+
     const prompt = `Eres un profesor de ${language}. Corrige el siguiente texto y proporciona un análisis detallado de los errores.
 
 Texto original:
-${text}
+${text}${grammarBlock}
 
 Por favor, proporciona tu respuesta en el siguiente formato JSON:
 {
@@ -322,7 +407,7 @@ Por favor, proporciona tu respuesta en el siguiente formato JSON:
       "explanation": "breve explicación del error",
       "position": número opcional indicando posición en el texto original
     }
-  ]
+  ]${grammarJsonBlock}
 }
 
 Si no hay errores, devuelve un array vacío en "errors".`;

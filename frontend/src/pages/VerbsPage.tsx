@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Trash2, Pencil, Eye } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Pencil, Eye, Dumbbell } from 'lucide-react';
 import { useState } from 'react';
 import { verbsApi } from '../services/api';
 import { Button } from '../components/ui/button';
@@ -206,6 +206,14 @@ export default function VerbsPage() {
               Gestiona los verbos para practicar sus conjugaciones
             </p>
           </div>
+          <Button
+            variant="outline"
+            onClick={() => navigate(`/languages/${languageId}/verb-srs-training`)}
+            className="flex items-center gap-2"
+          >
+            <Dumbbell className="w-4 h-4" />
+            Entrenar SRS
+          </Button>
           <Button onClick={handleOpenCreate} className="flex items-center gap-2">
             <Plus className="w-4 h-4" />
             Añadir Verbo
