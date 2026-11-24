@@ -3,11 +3,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, BookOpen, Trash2, Pencil, Dumbbell, Upload, FileText, Loader2, Check, Copy, ClipboardCheck } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { languagesApi, topicsApi, wordsApi, srsApi } from '../services/api';
+import { pickDefaultTopic, rememberTopic } from '../utils/defaultTopic';
 import { parsePastedText, parseSpreadsheet, type ParsedRow } from '../utils/vocabImportParser';
-import { Button } from '../components/ui/button';
-import { Card, CardContent, CardHeader } from '../components/ui/card';
-import { Badge } from '../components/ui/badge';
-import { Input } from '../components/ui/input';
+import { Button } from '../components/ui/Button';
+import { Card, CardContent, CardHeader } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
+import { Input } from '../components/ui/Input';
 import { Label } from '../components/ui/label';
 import { Checkbox } from '../components/ui/checkbox';
 import { DataTable } from '../components/ui/data-table/DataTable';
@@ -82,6 +83,7 @@ export default function LanguageDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['all-words', languageId] });
       queryClient.invalidateQueries({ queryKey: ['topics', languageId] });
       // Show green flash, keep dialog open, clear inputs
+      if (languageId && wordFormData.topicId) rememberTopic(languageId, wordFormData.topicId);
       setJustAdded(variables.term);
       setWordFormData(prev => ({ ...prev, term: '', definition: '' }));
       setTimeout(() => setJustAdded(null), 1500);
@@ -101,6 +103,8 @@ export default function LanguageDetailPage() {
   const importVocabMutation = useMutation({
     mutationFn: () => wordsApi.importForLanguage(languageId!, { topicName: importTopic.trim(), words: importRows }),
     onSuccess: (res) => {
+      const imported = topics?.find((t) => t.name.trim().toLowerCase() === res.topicName.trim().toLowerCase());
+      if (languageId && imported) rememberTopic(languageId, imported.id);
       queryClient.invalidateQueries({ queryKey: ['topics', languageId] });
       queryClient.invalidateQueries({ queryKey: ['all-words', languageId] });
       setImportResult(res);
@@ -218,10 +222,10 @@ export default function LanguageDetailPage() {
           <Button variant="outline" size="sm" onClick={() => setShowTopicForm(!showTopicForm)}>
             {showTopicForm ? 'Cancelar' : <><Plus className="w-4 h-4 mr-1" /> Topic</>}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => { setShowWordForm(!showWordForm); if (!showWordForm && topics?.length) setWordFormData({ ...wordFormData, topicId: topics[0].id }); }}>
+          <Button variant="outline" size="sm" onClick={() => { setShowWordForm(!showWordForm); const def = pickDefaultTopic(topics, languageId); if (!showWordForm && def) setWordFormData({ ...wordFormData, topicId: def.id }); }}>
             {showWordForm ? 'Cancelar' : <><Plus className="w-4 h-4 mr-1" /> Palabra</>}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => { setShowImport(true); }}>
+          <Button variant="outline" size="sm" onClick={() => { setShowImport(true); if (!importTopic) setImportTopic(pickDefaultTopic(topics, languageId)?.name ?? ''); }}>
             <Upload className="w-4 h-4 mr-1" /> Importar
           </Button>
           <Button size="sm" onClick={() => navigate(`/languages/${languageId}/srs-training?languageId=${languageId}`)}>

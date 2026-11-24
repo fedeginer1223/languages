@@ -1,6 +1,7 @@
 import { scheduleNext } from '../utils/srsSchedule';
 import { prisma } from '../utils/prisma';
 import { wordService } from './wordService';
+import { composeSession, clampSessionSize, DEFAULT_SESSION_SIZE } from '../utils/sessionComposer';
 
 // SRS intervals in days: level -> days until next review
 const SRS_INTERVALS: Record<number, number> = {
@@ -98,10 +99,13 @@ export const srsService = {
   /**
    * Get today's SRS words globally for a language (using Word table directly)
    */
-  async getDailyGlobal(languageId: string, topicIds?: string[], newWordCount?: number, selectionMode?: 'fifo' | 'lifo' | 'random', errorsOnly?: boolean) {
+  async getDailyGlobal(languageId: string, topicIds?: string[], newWordCount?: number, selectionMode?: 'fifo' | 'lifo' | 'random', errorsOnly?: boolean, sessionSize?: number) {
     const now = new Date();
     const todayStart = startOfDay(now);
     const todayEnd = endOfDay(now);
+    // sessionSize wins; legacy newWordCount alone keeps the old "all reviews + N new" behaviour.
+    const legacy = sessionSize === undefined && newWordCount !== undefined;
+    const size = clampSessionSize(sessionSize ?? DEFAULT_SESSION_SIZE);
 
     // ─── Filters ──────────────────────────────────────────────────────────
     // Reviews are SACRED: what's due today has to appear regardless of which
@@ -160,11 +164,12 @@ export const srsService = {
         srsLevel: { gt: 0, lt: MAX_SRS_LEVEL },
         nextReviewAt: { lte: todayEnd },
       },
-      orderBy: [{ srsLevel: 'asc' }, { successRate: 'asc' }],
+      // Most overdue first, ties by higher level.
+      orderBy: [{ nextReviewAt: 'asc' }, { srsLevel: 'desc' }],
     });
 
-    // Step 4: New words — count is user-configurable, selection mode configurable
-    const requestedNewCount = newWordCount ?? getNewWordCount(reviewWords.length);
+    // Step 4: New-word candidates — the composer trims them to the session size.
+    const requestedNewCount = legacy ? newWordCount! : size;
     const mode = selectionMode || 'fifo';
 
     let orderBy: any;
@@ -198,11 +203,17 @@ export const srsService = {
       newWords = newWords.slice(0, requestedNewCount);
     }
 
+    const composed = legacy
+      ? { reviews: reviewWords, newItems: newWords, remainingReviews: 0, remainingNew: 0 }
+      : composeSession({ reviews: reviewWords, newItems: newWords, sessionSize: size });
+    const sessionReviews = composed.reviews;
+    newWords = composed.newItems;
+
     const overdueIds = new Set(overdueWords.map(w => w.id));
     const now2 = new Date();
 
     let words: any[] = [
-      ...reviewWords.map(w => ({
+      ...sessionReviews.map(w => ({
         ...w,
         label: (overdueIds.has(w.id) ? 'atrasada' : 'recordar') as 'atrasada' | 'recordar' | 'nueva',
         daysSinceLastTrained: w.lastTrainedAt ? Math.floor((now2.getTime() - w.lastTrainedAt.getTime()) / (1000 * 60 * 60 * 24)) : null,
@@ -261,6 +272,17 @@ export const srsService = {
     }
     const todayCount = reviewWords.filter(w => !overdueIds.has(w.id)).length;
 
+    const tomorrowStart = addDays(now, 1);
+    const tomorrowEnd = endOfDay(tomorrowStart);
+    const tomorrowCount = await prisma.word.count({
+      where: {
+        topic: languageWideFilter,
+        source: sourceFilter,
+        srsLevel: { gt: 0, lt: MAX_SRS_LEVEL },
+        nextReviewAt: { gte: tomorrowStart, lte: tomorrowEnd },
+      },
+    });
+
     const totalWords = await prisma.word.count({
       where: { topic: newTopicFilter, source: sourceFilter },
     });
@@ -290,6 +312,12 @@ export const srsService = {
         mastered,
         inProgress,
         pending,
+        sessionSize: legacy ? words.length : size,
+        reviewsInSession: sessionReviews.length,
+        newInSession: newWords.length,
+        remainingReviews: reviewWords.length - sessionReviews.length,
+        remainingNew: Math.max(0, pending - newWords.length),
+        tomorrowCount,
       },
     };
   },
@@ -581,5 +609,44 @@ export const srsService = {
         nextReviewAt: scheduleNext(now, SRS_INTERVALS[1]),
       },
     });
+  },
+
+  async generateMultipleChoiceOptions(wordId: string) {
+    // Get the correct word
+    const correctWord = await prisma.word.findUnique({
+      where: { id: wordId },
+      include: { topic: true },
+    });
+
+    if (!correctWord) {
+      throw new Error('Word not found');
+    }
+
+    // Get 3 random words from the same language as distractors
+    const allWordsFromLanguage = await prisma.word.findMany({
+      where: {
+        topic: {
+          languageId: correctWord.topic.languageId,
+        },
+        id: {
+          not: wordId, // Exclude the correct word
+        },
+      },
+    });
+
+    // Shuffle and pick 3 random words as distractors
+    const shuffled = allWordsFromLanguage.sort(() => 0.5 - Math.random());
+    const distractors = shuffled.slice(0, 3).map((w) => w.term);
+
+    // Create options array with correct answer and distractors
+    const options = [correctWord.term, ...distractors];
+
+    // Shuffle the options so correct answer is not always first
+    const shuffledOptions = options.sort(() => 0.5 - Math.random());
+
+    return {
+      options: shuffledOptions,
+      correctAnswer: correctWord.term,
+    };
   },
 };

@@ -90,7 +90,108 @@ function safeJsonParse<T>(raw: string): T | null {
   }
 }
 
+export type TranslationVerdict = 'valid' | 'almost' | 'invalid';
+
+export interface JudgeTranslationInput {
+  languageName: string;
+  pattern: string;
+  spanish: string;
+  reference: string;
+  otherExamples: string[];
+  userResponse: string;
+}
+
+export interface JudgeTranslationResult {
+  verdict: TranslationVerdict;
+  corrected?: string;
+  explanation: string;
+  source: 'exact' | 'ai' | 'fallback';
+}
+
+const JUDGE_MODEL = process.env.STRUCTURE_JUDGE_MODEL ?? 'claude-sonnet-5-5';
+
+/** Loose match: NFC, lowercase, curly apostrophes/quotes straightened, trailing punctuation stripped, whitespace collapsed. */
+export function normalizeForMatch(s: string): string {
+  return s
+    .normalize('NFC')
+    .toLowerCase()
+    .trim()
+    .replace(/[’‛′ʼ]/g, "'")
+    .replace(/[“”‟″]/g, '"')
+    .replace(/[.,!?;:"]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const JUDGE_SYSTEM = `Eres un evaluador de traducciones para un estudiante avanzado que practica estructuras hechas en un idioma objetivo. El estudiante traduce una frase en español usando una estructura (patrón) concreta.
+
+Evalúa si la frase del estudiante:
+(a) es una frase correcta y natural en el idioma objetivo,
+(b) expresa el significado de la frase en español,
+(c) usa la estructura objetivo (literal, o con una variante legítima flexionada o léxica; cambiar un verbo copulativo por otro, o de tiempo/persona cuando encaja con la frase en español, es válido).
+
+La frase de referencia es SOLO una respuesta posible, nunca el criterio: cualquier alternativa correcta es válida.
+
+Veredictos:
+- "valid": cumple a, b y c. No hace falta corrección; omite "corrected" y deja "explanation" vacío.
+- "almost": cumple b y c pero tiene un desliz menor (concordancia, acento/diacrítico, ortografía, artículo, una preposición equivocada, orden de palabras menor). Da "corrected" (la frase DEL ESTUDIANTE con la corrección mínima, NO la referencia) y "explanation" (una frase en español que nombre el desliz).
+- "invalid": no usa la estructura, o cambia el significado, o tiene un error gramatical grave que rompe la frase. Da "explanation" (una frase en español) y "corrected" (la frase del estudiante corregida, si es factible; si no, omítelo).
+
+Ignora por completo puntuación, mayúsculas y estilo de apóstrofes. No seas quisquilloso con el estilo. Si dudas entre "valid" y "almost", elige "valid".
+
+Responde SOLO con JSON estricto, sin markdown: {"verdict":"valid"|"almost"|"invalid","corrected":"...","explanation":"..."}`;
+
 export const structureAiService = {
+  /**
+   * Judge a translation against the cue, the structure and natural usage (not against the reference).
+   * Never throws: on any failure degrades to exact comparison with the reference.
+   */
+  async judgeTranslation(input: JudgeTranslationInput): Promise<JudgeTranslationResult> {
+    const exactMatch = normalizeForMatch(input.userResponse) === normalizeForMatch(input.reference);
+    if (exactMatch) return { verdict: 'valid', explanation: '', source: 'exact' };
+    const fallback: JudgeTranslationResult = {
+      verdict: 'invalid',
+      explanation: 'No se pudo evaluar con IA; comparado con la referencia.',
+      source: 'fallback',
+    };
+    try {
+      const others = input.otherExamples.length > 0
+        ? input.otherExamples.map((e) => `"${e}"`).join(' · ')
+        : '(ninguno)';
+      const user = `IDIOMA OBJETIVO: ${input.languageName}
+ESTRUCTURA: ${input.pattern}
+FRASE EN ESPAÑOL: ${input.spanish}
+REFERENCIA (solo una respuesta posible): ${input.reference}
+OTROS EJEMPLOS DE LA ESTRUCTURA: ${others}
+
+FRASE DEL ESTUDIANTE: ${input.userResponse}`;
+      const res = await getClient().messages.create({
+        model: JUDGE_MODEL,
+        max_tokens: 300,
+        system: JUDGE_SYSTEM,
+        messages: [{ role: 'user', content: user }],
+      });
+      console.debug(`[judgeTranslation] tokens in=${res.usage.input_tokens} out=${res.usage.output_tokens}`);
+      if (res.stop_reason === 'refusal') return fallback;
+      const text = res.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+      const parsed = safeJsonParse<{ verdict?: string; corrected?: unknown; explanation?: unknown }>(text);
+      if (!parsed || !['valid', 'almost', 'invalid'].includes(parsed.verdict as string)) return fallback;
+      const corrected = typeof parsed.corrected === 'string' && parsed.corrected.trim() && parsed.corrected !== 'null'
+        ? parsed.corrected.trim() : undefined;
+      const explanation = typeof parsed.explanation === 'string' ? parsed.explanation.trim() : '';
+      const verdict = parsed.verdict as TranslationVerdict;
+      return {
+        verdict,
+        ...(verdict !== 'valid' && corrected ? { corrected } : {}),
+        explanation: verdict === 'valid' ? '' : explanation,
+        source: 'ai',
+      };
+    } catch (e: any) {
+      console.warn('[judgeTranslation] failed:', e?.message ?? e);
+      return fallback;
+    }
+  },
+
   /**
    * Generate a situational cue (in Spanish) for the learner to produce a variant
    * of the structure. The cue is a real-world micro-scenario, not a translation.

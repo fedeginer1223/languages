@@ -5,10 +5,7 @@ import type {
   Word,
   Verb,
   Essay,
-  TrainingSession,
-  ValidationResult,
-  Stats,
-  ErrorStats,
+  JudgeExampleResult,
 } from '../types';
 
 const api = axios.create({
@@ -16,13 +13,36 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 });
+
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    const url: string = error?.config?.url ?? '';
+    if (error?.response?.status === 401 && !url.startsWith('/auth/')) {
+      window.dispatchEvent(new Event('ll:unauthorized'));
+    }
+    return Promise.reject(error);
+  },
+);
+
+export interface AuthUser {
+  id: string;
+  email: string;
+}
+
+export const authApi = {
+  login: (email: string, password: string) =>
+    api.post<{ user: AuthUser }>('/auth/login', { email, password }).then((res) => res.data.user),
+  logout: () => api.post('/auth/logout').then((res) => res.data),
+  me: () => api.get<{ user: AuthUser }>('/auth/me').then((res) => res.data.user),
+};
 
 export interface DueCounts {
   vocabulary: number;
   verbs: number;
   structures: number;
-  dictation: number;
 }
 
 export const languagesApi = {
@@ -60,55 +80,6 @@ export const wordsApi = {
   update: (id: string, data: Partial<{ term: string; definition: string }>) =>
     api.put<Word>(`/words/${id}`, data).then((res) => res.data),
   delete: (id: string) => api.delete(`/words/${id}`).then((res) => res.data),
-};
-
-export interface TrainingSessionSummary {
-  sessionId: string;
-  name: string | null;
-  mode: string;
-  trainingType: 'batch' | 'srs';
-  totalQuestions: number;
-  currentIndex: number;
-  completed: boolean;
-  createdAt: string;
-  updatedAt: string;
-  stats: {
-    answered: number;
-    correct: number;
-    total: number;
-    accuracy: number;
-    inProgress?: number;
-    pending?: number;
-    todayCount?: number;
-  };
-}
-
-export const trainingApi = {
-  listSessions: (languageId: string) =>
-    api.get<TrainingSessionSummary[]>('/training/sessions', { params: { languageId } }).then((res) => res.data),
-  createSession: (params: {
-    mode?: string;
-    trainingType?: string;
-    topicId?: string;
-    topicIds?: string;
-    languageId?: string;
-    limit?: number;
-    minErrorRate?: number;
-  }) => api.get<TrainingSession>('/training/session', { params }).then((res) => res.data),
-  getSession: (sessionId: string) =>
-    api.get<TrainingSession>(`/training/session/${sessionId}`).then((res) => res.data),
-  updateSessionProgress: (sessionId: string, currentIndex: number) =>
-    api.put(`/training/session/${sessionId}/progress`, { currentIndex }).then((res) => res.data),
-  renameSession: (sessionId: string, name: string) =>
-    api.put(`/training/session/${sessionId}/name`, { name }).then((res) => res.data),
-  endSession: (sessionId: string) =>
-    api.post(`/training/session/${sessionId}/end`).then((res) => res.data),
-  deleteSession: (sessionId: string) =>
-    api.delete(`/training/session/${sessionId}`).then((res) => res.data),
-  validateAnswer: (data: { sessionId: string; wordId: string; answer: string }) =>
-    api.post<ValidationResult>('/training/validate', data).then((res) => res.data),
-  getMultipleChoiceOptions: (wordId: string) =>
-    api.get<{ options: string[]; correctAnswer: string }>(`/training/multiple-choice/${wordId}`).then((res) => res.data),
 };
 
 export interface SrsConjugationItem {
@@ -188,10 +159,6 @@ export const verbsApi = {
   update: (id: string, data: Partial<{ infinitive: string }>) =>
     api.put<Verb>(`/verbs/${id}`, data).then((res) => res.data),
   delete: (id: string) => api.delete(`/verbs/${id}`).then((res) => res.data),
-  getPracticeQuestions: (id: string, tenses?: string[]) =>
-    api.get(`/verbs/${id}/practice`, { params: { tenses } }).then((res) => res.data),
-  validateConjugation: (id: string, answer: string) =>
-    api.post<ValidationResult>(`/verbs/conjugations/${id}/validate`, { answer }).then((res) => res.data),
 };
 
 export const essaysApi = {
@@ -229,7 +196,7 @@ export interface VocabImportResult {
 
 // ============== GRAMMAR ==============
 
-import type { GrammarItem } from '../types';
+import type { GrammarItem, SessionComposition } from '../types';
 
 export const grammarApi = {
   list: (languageId: string) =>
@@ -254,17 +221,20 @@ export interface SrsWord extends Word {
 }
 
 export const srsApi = {
-  getDailySession: (languageId: string, topicIds?: string[], newWordCount?: number, selectionMode?: string, errorsOnly?: boolean) =>
+  getMultipleChoiceOptions: (wordId: string) =>
+    api.get<{ options: string[]; correctAnswer: string }>(`/srs/multiple-choice/${wordId}`).then((res) => res.data),
+  getDailySession: (languageId: string, topicIds?: string[], newWordCount?: number, selectionMode?: string, errorsOnly?: boolean, sessionSize?: number) =>
     api.get(`/srs/${languageId}/daily`, {
       params: {
         ...(topicIds ? { topicIds: topicIds.join(',') } : {}),
         ...(newWordCount !== undefined ? { newWordCount } : {}),
         ...(selectionMode ? { selectionMode } : {}),
         ...(errorsOnly ? { errorsOnly: 'true' } : {}),
+        ...(sessionSize !== undefined ? { sessionSize } : {}),
       },
     }).then((res) => res.data as {
       words: SrsWord[];
-      summary: { reviewCount: number; newCount: number; overdueCount: number; todayCount: number; todayByLevel: Record<number, number>; overdueByLevel: Record<number, number>; forgottenCount: number; totalCount: number; reviewByLevel: Record<number, number>; totalInLanguage: number; mastered: number; inProgress: number; pending: number };
+      summary: { reviewCount: number; newCount: number; overdueCount: number; todayCount: number; todayByLevel: Record<number, number>; overdueByLevel: Record<number, number>; forgottenCount: number; totalCount: number; reviewByLevel: Record<number, number>; totalInLanguage: number; mastered: number; inProgress: number; pending: number } & SessionComposition;
     }),
   addExtraWords: (languageId: string, count: number, topicIds?: string[]) =>
     api.post(`/srs/${languageId}/extra`, { count, topicIds: topicIds?.join(',') }).then((res) => res.data as SrsWord[]),
@@ -278,25 +248,6 @@ export const srsApi = {
     api.post(`/srs/words/${wordId}/reset`).then((res) => res.data),
   recordAttempt: (wordId: string, correct: boolean) =>
     api.post(`/srs/words/${wordId}/record-attempt`, { correct }).then((res) => res.data),
-};
-
-export const dictationApi = {
-  getDailySession: (languageId: string, topicIds?: string[], newWordCount?: number, selectionMode?: string, characterFilter?: string) =>
-    api.get(`/dictation/${languageId}/daily`, {
-      params: {
-        ...(topicIds ? { topicIds: topicIds.join(',') } : {}),
-        ...(newWordCount !== undefined ? { newWordCount } : {}),
-        ...(selectionMode ? { selectionMode } : {}),
-        ...(characterFilter ? { characterFilter } : {}),
-      },
-    }).then((res) => res.data as {
-      words: SrsWord[];
-      summary: { reviewCount: number; newCount: number; overdueCount: number; forgottenCount: number; totalCount: number; reviewByLevel: Record<number, number>; totalInLanguage: number; mastered: number; inProgress: number; pending: number };
-    }),
-  advanceWord: (wordId: string) =>
-    api.post(`/dictation/words/${wordId}/advance`).then((res) => res.data),
-  recordAttempt: (wordId: string, correct: boolean) =>
-    api.post(`/dictation/words/${wordId}/record-attempt`, { correct }).then((res) => res.data),
 };
 
 // ============== STRUCTURES ==============
@@ -350,6 +301,12 @@ export interface StructureSessionSummary {
   mastered: number;
   inProgress: number;
   pending: number;
+  sessionSize?: number;
+  reviewsInSession?: number;
+  newInSession?: number;
+  remainingReviews?: number;
+  remainingNew?: number;
+  tomorrowCount?: number;
 }
 
 export interface JudgeResponse {
@@ -369,11 +326,11 @@ export const structuresApi = {
   update: (id: string, data: Partial<{ pattern: string; category: string; examples: string[] }>) =>
     api.put<Structure>(`/structures/${id}`, data).then((r) => r.data),
   delete: (id: string) => api.delete(`/structures/${id}`).then((r) => r.data),
-  getDaily: (languageId: string, newCount?: number, selectionMode?: 'fifo' | 'lifo' | 'random') =>
+  getDaily: (languageId: string, newCount?: number, selectionMode?: 'fifo' | 'lifo' | 'random', sessionSize?: number) =>
     api
       .get<{ structures: StructureSessionItem[]; summary: StructureSessionSummary }>(
         `/languages/${languageId}/structures/daily`,
-        { params: { ...(newCount !== undefined ? { newCount } : {}), ...(selectionMode ? { selectionMode } : {}) } }
+        { params: { ...(newCount !== undefined ? { newCount } : {}), ...(selectionMode ? { selectionMode } : {}), ...(sessionSize !== undefined ? { sessionSize } : {}) } }
       )
       .then((r) => r.data),
   generateCue: (structureId: string, excludeCues?: string[]) =>
@@ -384,6 +341,10 @@ export const structuresApi = {
     api.post<JudgeResponse>(`/structures/${structureId}/judge`, data).then((r) => r.data),
   suggest: (structureId: string, cue: string) =>
     api.post<{ suggestion: string }>(`/structures/${structureId}/suggest`, { cue }).then((r) => r.data),
+  judgeExample: (exampleId: string, answer: string, responseTimeMs?: number) =>
+    api
+      .post<JudgeExampleResult>(`/structures/examples/${exampleId}/judge`, { answer, responseTimeMs })
+      .then((r) => r.data),
   advanceSrs: (structureId: string) =>
     api.post<{ ok: true; newLevel: number; nextReviewAt: string | null }>(`/structures/${structureId}/advance-srs`).then((r) => r.data),
   reschedule: (structureId: string) =>
@@ -421,13 +382,6 @@ export const structuresApi = {
         { correct }
       )
       .then((r) => r.data),
-};
-
-export const statsApi = {
-  getLanguageStats: (languageId: string) =>
-    api.get<Stats>(`/stats/languages/${languageId}`).then((res) => res.data),
-  getErrorStats: (languageId?: string) =>
-    api.get<ErrorStats>('/stats/errors', { params: { languageId } }).then((res) => res.data),
 };
 
 export type Cefr = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';

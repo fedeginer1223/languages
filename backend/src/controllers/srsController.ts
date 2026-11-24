@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { srsService } from '../services/srsService';
+import { parseSessionSize } from '../utils/sessionComposer';
 
 export const srsController = {
   async markDueReviewed(req: Request, res: Response, next: NextFunction) {
@@ -24,7 +25,7 @@ export const srsController = {
       const newWordCount = req.query.newWordCount ? parseInt(req.query.newWordCount as string) : undefined;
       const selectionMode = (req.query.selectionMode as 'fifo' | 'lifo' | 'random') || undefined;
       const errorsOnly = req.query.errorsOnly === 'true';
-      const result = await srsService.getDailyGlobal(languageId, topicIds, newWordCount, selectionMode, errorsOnly);
+      const result = await srsService.getDailyGlobal(languageId, topicIds, newWordCount, selectionMode, errorsOnly, parseSessionSize(req.query.sessionSize));
       res.json(result);
     } catch (error) {
       next(error);
@@ -82,6 +83,15 @@ export const srsController = {
       }));
 
       res.json(words);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getMultipleChoiceOptions(req: Request, res: Response, next: NextFunction) {
+    try {
+      const options = await srsService.generateMultipleChoiceOptions(req.params.wordId);
+      res.json(options);
     } catch (error) {
       next(error);
     }

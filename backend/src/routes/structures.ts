@@ -30,3 +30,4 @@ structureRouter.post('/structures/:id/examples/generate', structureController.ge
 structureRouter.put('/structures/:id/examples', structureController.replaceExamples);
 structureRouter.put('/structures/:id/example-count', structureController.setExampleCount);
 structureRouter.post('/structures/examples/:exampleId/attempt', structureController.recordExampleAttempt);
+structureRouter.post('/structures/examples/:exampleId/judge', structureController.judgeExample);

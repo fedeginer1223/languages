@@ -1,6 +1,5 @@
 import { prisma } from '../utils/prisma';
 import { CreateVerbDto } from '../types';
-import { calculateSuccessRate, validateConjugationAnswer } from '../utils/validation';
 import { getConjugation, getPersonsForTense, hasConjugations } from '../utils/frenchConjugations';
 
 // Common French verbs database
@@ -138,73 +137,5 @@ export const verbService = {
     return prisma.verb.delete({
       where: { id },
     });
-  },
-
-  async getPracticeQuestions(verbId: string, tenses?: string[]) {
-    const verb = await prisma.verb.findUnique({
-      where: { id: verbId },
-      include: {
-        conjugations: {
-          where: tenses ? { tense: { in: tenses } } : undefined,
-          orderBy: [
-            { successRate: 'asc' },
-            { attempts: 'asc' },
-          ],
-        },
-      },
-    });
-
-    if (!verb) {
-      throw new Error('Verb not found');
-    }
-
-    return {
-      verbId: verb.id,
-      infinitive: verb.infinitive,
-      questions: verb.conjugations.map((c) => ({
-        conjugationId: c.id,
-        tense: c.tense,
-        person: c.person,
-        prompt: `${verb.infinitive} (${c.tense}, ${c.person})`,
-      })),
-    };
-  },
-
-  async validateConjugation(conjugationId: string, answer: string) {
-    const conjugation = await prisma.verbConjugation.findUnique({
-      where: { id: conjugationId },
-    });
-
-    if (!conjugation) {
-      throw new Error('Conjugation not found');
-    }
-
-    const correct = validateConjugationAnswer(answer, conjugation.form);
-
-    const newAttempts = conjugation.attempts + 1;
-    const newCorrectCount = correct
-      ? conjugation.correctCount + 1
-      : conjugation.correctCount;
-    const newSuccessRate = calculateSuccessRate(newCorrectCount, newAttempts);
-
-    const updated = await prisma.verbConjugation.update({
-      where: { id: conjugationId },
-      data: {
-        attempts: newAttempts,
-        correctCount: newCorrectCount,
-        successRate: newSuccessRate,
-      },
-    });
-
-    return {
-      correct,
-      expectedAnswer: conjugation.form,
-      explanation: correct ? null : `La respuesta correcta es "${conjugation.form}"`,
-      stats: {
-        attempts: updated.attempts,
-        correctCount: updated.correctCount,
-        successRate: updated.successRate,
-      },
-    };
   },
 };

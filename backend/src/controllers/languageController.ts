@@ -1,6 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { languageService } from '../services/languageService';
 import { dueCountsService } from '../services/dueCountsService';
+import { todayService } from '../services/todayService';
+import { parseSessionSize } from '../utils/sessionComposer';
+import { srsBacklogService } from '../services/srsBacklogService';
 import { CreateLanguageDto, UpdateLanguageDto } from '../types';
 
 export const languageController = {
@@ -46,6 +49,23 @@ export const languageController = {
     try {
       await languageService.delete(req.params.id);
       res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getSrsBacklog(req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json(await srsBacklogService.getBacklog(String(req.params.id)));
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async getToday(req: Request, res: Response, next: NextFunction) {
+    try {
+      const size = parseSessionSize(req.query.sessionSize);
+      res.json(await todayService.getToday(String(req.params.languageId), size));
     } catch (error) {
       next(error);
     }

@@ -2,6 +2,7 @@ import { scheduleNext } from '../utils/srsSchedule';
 import { prisma } from '../utils/prisma';
 import { calculateWeightedScore } from '../utils/validation';
 import { structureAiService } from './structureAiService';
+import { composeSession, clampSessionSize, DEFAULT_SESSION_SIZE } from '../utils/sessionComposer';
 
 const SRS_INTERVALS: Record<number, number> = { 0: 0, 1: 3, 2: 7, 3: 15, 4: 30 };
 const MAX_SRS_LEVEL = 6;
@@ -15,6 +16,11 @@ function addDays(d: Date, n: number): Date {
   const r = new Date(d);
   r.setDate(r.getDate() + n);
   r.setHours(0, 0, 0, 0);
+  return r;
+}
+function endOfDay(d: Date): Date {
+  const r = new Date(d);
+  r.setHours(23, 59, 59, 999);
   return r;
 }
 function startOfDay(d: Date): Date {
@@ -41,9 +47,14 @@ export const structureSrsService = {
    * Build today's session. Picks structures due (review or overdue) + N new ones,
    * interleaved in random order. Overdue penalty: same logic as vocabulary.
    */
-  async getDaily(languageId: string, newCount: number = 5, selectionMode: 'fifo' | 'lifo' | 'random' = 'fifo') {
+  async getDaily(languageId: string, newCount?: number, selectionMode: 'fifo' | 'lifo' | 'random' = 'fifo', sessionSize?: number) {
     const now = new Date();
     const todayStart = startOfDay(now);
+    const todayEnd = endOfDay(now);
+    // sessionSize wins; legacy newCount alone keeps the old "all reviews + N new" behaviour.
+    const legacy = sessionSize === undefined && newCount !== undefined;
+    const size = clampSessionSize(sessionSize ?? DEFAULT_SESSION_SIZE);
+    const candidateCount = legacy ? newCount! : size;
 
     // Overdue items are NOT penalized (user decision 2026-10-11): they stay due with the 'atrasada' label until trained.
     const overdueIds = await prisma.structure.findMany({
@@ -88,9 +99,11 @@ export const structureSrsService = {
       where: {
         languageId,
         srsLevel: { gt: 0, lt: MAX_SRS_LEVEL },
-        nextReviewAt: { lte: now },
+        nextReviewAt: { lte: todayEnd },
       },
       include: { examples: { orderBy: { order: 'asc' } } },
+      // Most overdue first, ties by higher level.
+      orderBy: [{ nextReviewAt: 'asc' }, { srsLevel: 'desc' }],
     });
 
     // 4. New structures (srsLevel 0, never trained)
@@ -102,12 +115,27 @@ export const structureSrsService = {
 
     let newStructures =
       selectionMode === 'random'
-        ? shuffle(newAvailable).slice(0, newCount)
-        : newAvailable.slice(0, newCount);
+        ? shuffle(newAvailable).slice(0, candidateCount)
+        : newAvailable.slice(0, candidateCount);
 
-    // 5. Interleave — reviews always shuffled so the same due set doesn't repeat
-    // in a deterministic order across sessions.
-    const combined = shuffle([...reviewStructures, ...newStructures]);
+    // Compose the session (priority order is applied BEFORE trimming).
+    const composed = legacy
+      ? { reviews: reviewStructures, newItems: newStructures, remainingReviews: 0, remainingNew: 0 }
+      : composeSession({ reviews: reviewStructures, newItems: newStructures, sessionSize: size });
+    const sessionReviews = composed.reviews;
+    newStructures = composed.newItems;
+
+    // 5. Interleave — shuffled only AFTER choosing which items make the session.
+    const combined = shuffle([...sessionReviews, ...newStructures]);
+
+    const tomorrowStart = addDays(now, 1);
+    const tomorrowCount = await prisma.structure.count({
+      where: {
+        languageId,
+        srsLevel: { gt: 0, lt: MAX_SRS_LEVEL },
+        nextReviewAt: { gte: tomorrowStart, lte: endOfDay(tomorrowStart) },
+      },
+    });
 
     // 6. Stats
     const totalInLanguage = await prisma.structure.count({ where: { languageId } });
@@ -137,6 +165,12 @@ export const structureSrsService = {
         mastered,
         inProgress,
         pending,
+        sessionSize: legacy ? combined.length : size,
+        reviewsInSession: sessionReviews.length,
+        newInSession: newStructures.length,
+        remainingReviews: reviewStructures.length - sessionReviews.length,
+        remainingNew: Math.max(0, pending - newStructures.length),
+        tomorrowCount,
       },
     };
   },

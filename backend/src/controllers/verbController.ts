@@ -67,31 +67,6 @@ export const verbController = {
     }
   },
 
-  async getPracticeQuestions(req: Request, res: Response, next: NextFunction) {
-    try {
-      const tenses = req.query.tenses
-        ? (req.query.tenses as string).split(',')
-        : undefined;
-      const questions = await verbService.getPracticeQuestions(
-        req.params.id,
-        tenses
-      );
-      res.json(questions);
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  async validateConjugation(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { answer } = req.body;
-      const result = await verbService.validateConjugation(req.params.id, answer);
-      res.json(result);
-    } catch (error) {
-      next(error);
-    }
-  },
-
   async getSrsDaily(req: Request, res: Response, next: NextFunction) {
     try {
       const languageId = req.params.languageId;

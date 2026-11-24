@@ -1,3 +1,4 @@
+import { parseSessionSize } from '../utils/sessionComposer';
 import { Request, Response, NextFunction } from 'express';
 import { structureService } from '../services/structureService';
 import { structureSrsService } from '../services/structureSrsService';
@@ -57,9 +58,9 @@ export const structureController = {
   async getDailySession(req: Request, res: Response, next: NextFunction) {
     try {
       const languageId = req.params.languageId;
-      const newCount = req.query.newCount ? parseInt(req.query.newCount as string) : 5;
+      const newCount = req.query.newCount ? parseInt(req.query.newCount as string) : undefined;
       const selectionMode = (req.query.selectionMode as 'fifo' | 'lifo' | 'random') || 'fifo';
-      const result = await structureSrsService.getDaily(languageId, newCount, selectionMode);
+      const result = await structureSrsService.getDaily(languageId, newCount, selectionMode, parseSessionSize(req.query.sessionSize));
       res.json(result);
     } catch (e) { next(e); }
   },
@@ -188,6 +189,50 @@ export const structureController = {
       }
       const updated = await structureService.replaceExamples(structureId, examples);
       res.json(updated);
+    } catch (e) { next(e); }
+  },
+
+  async judgeExample(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { answer, responseTimeMs } = req.body ?? {};
+      if (typeof answer !== 'string' || !answer.trim() || answer.length > 500) {
+        return res.status(400).json({ error: 'answer must be a non-empty string of at most 500 characters' });
+      }
+      const example = await prisma.structureExample.findUnique({
+        where: { id: req.params.exampleId },
+        include: { structure: { include: { examples: { orderBy: { order: 'asc' } } } } },
+      });
+      if (!example) return res.status(404).json({ error: 'Example not found' });
+      const languageName = await getLanguageName(example.structure.languageId);
+      const otherExamples = example.structure.examples
+        .filter((e) => e.id !== example.id)
+        .map((e) => e.text)
+        .filter((t) => t.trim().length > 0)
+        .slice(0, 4);
+      const result = await structureAiService.judgeTranslation({
+        languageName,
+        pattern: example.structure.pattern,
+        spanish: example.spanish ?? '',
+        reference: example.text,
+        otherExamples,
+        userResponse: answer.trim(),
+      });
+      try {
+        await prisma.structureAttempt.create({
+          data: {
+            structureId: example.structureId,
+            cue: example.spanish ?? '',
+            userResponse: answer.trim(),
+            verdict: result.verdict,
+            suggestion: result.corrected ?? null,
+            responseTimeMs: typeof responseTimeMs === 'number' && Number.isFinite(responseTimeMs) ? Math.max(0, Math.round(responseTimeMs)) : 0,
+            withinLimit: true,
+          },
+        });
+      } catch (logErr) {
+        console.error('Failed to log structure attempt', logErr);
+      }
+      res.json(result);
     } catch (e) { next(e); }
   },
 

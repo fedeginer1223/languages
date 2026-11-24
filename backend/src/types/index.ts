@@ -25,24 +25,6 @@ export interface CreateWordsBatchDto {
   words: CreateWordDto[];
 }
 
-export interface TrainingSessionParams {
-  mode: 'by-level' | 'by-topic';
-  trainingType?: 'batch' | 'srs';
-  topicId?: string;
-  topicIds?: string; // comma-separated
-  languageId?: string;
-  limit?: number;
-  minErrorRate?: number; // 0-100, words with successRate <= (100 - minErrorRate) or untrained
-  source?: 'all' | 'vocabulary' | 'error';
-  errorCategory?: string;
-}
-
-export interface ValidateAnswerDto {
-  sessionId: string;
-  wordId: string;
-  answer: string;
-}
-
 export interface CreateVerbDto {
   infinitive: string;
   tenses: string[];
@@ -81,4 +63,36 @@ export interface CorrectionResult {
     position?: number;
   }[];
   grammarVerdicts?: GrammarVerdict[];
+}
+
+// ─── "Hoy" landing summary ────────────────────────────────────────────
+export interface TodayModuleStats {
+  dueToday: number;
+  overdue: number;
+  newAvailable: number;
+  reviewsInSession: number;
+  newInSession: number;
+  remainingReviews: number;
+  tomorrow: number;
+  mastered: number;
+  inProgress: number;
+  total: number;
+}
+
+export interface TodayResponse {
+  date: string;
+  sessionSize: number;
+  modules: {
+    vocabulary: TodayModuleStats;
+    structures: TodayModuleStats;
+    verbs: {
+      verbsDue: number;
+      verbsNeverTrained: number;
+      conjugationsDue: number;
+      tomorrowVerbs: number;
+      totalVerbs: number;
+    };
+  };
+  streak: { days: number; trainedToday: boolean; lastTrainedAt: string | null };
+  week: Record<string, { vocabulary: number; structures: number }>;
 }

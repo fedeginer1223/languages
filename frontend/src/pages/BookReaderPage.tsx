@@ -5,10 +5,10 @@ import { Eye, EyeOff, BookText, Loader2, ArrowLeft, X, Bookmark, List, RefreshCw
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { booksApi } from '../services/api';
 import type { BookAnnotation, BookHighlight, BookPageData } from '../services/api';
-import { Button } from '../components/ui/button';
-import { Card, CardContent } from '../components/ui/card';
-import { Badge } from '../components/ui/badge';
-import { Input } from '../components/ui/input';
+import { Button } from '../components/ui/Button';
+import { Card, CardContent } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
+import { Input } from '../components/ui/Input';
 import {
   Dialog,
   DialogContent,

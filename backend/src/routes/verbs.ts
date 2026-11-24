@@ -7,7 +7,5 @@ verbRouter.get('/search', verbController.searchVerbs);
 verbRouter.get('/:id', verbController.getById);
 verbRouter.put('/:id', verbController.update);
 verbRouter.delete('/:id', verbController.delete);
-verbRouter.get('/:id/practice', verbController.getPracticeQuestions);
-verbRouter.post('/conjugations/:id/validate', verbController.validateConjugation);
 verbRouter.post('/conjugations/:id/srs-validate', verbController.srsValidate);
 verbRouter.post('/conjugations/:id/srs-advance', verbController.srsAdvance);

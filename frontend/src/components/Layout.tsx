@@ -1,6 +1,6 @@
-import { ReactNode, useState, useEffect } from 'react';
+import { type ReactNode, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Languages,
   BookOpen,
@@ -12,10 +12,11 @@ import {
   ChevronDown,
   ChevronRight,
   Sparkles,
-  Headphones,
+  LogOut,
   BookMarked,
 } from 'lucide-react';
 import { languagesApi } from '../services/api';
+import { useAuth } from '../auth/AuthProvider';
 import type { Language } from '../types';
 
 interface LayoutProps {
@@ -51,19 +52,18 @@ function LanguageNode({
 
   const sections = [
     { key: 'vocabulary' as const, name: 'Vocabulario', icon: BookOpen, href: `/languages/${lang.id}` },
-    { key: 'dictation' as const, name: 'Dictado', icon: Headphones, href: `/languages/${lang.id}/dictation-training` },
     { key: 'books' as const, name: 'Libros', icon: BookMarked, href: `/languages/${lang.id}/books` },
     { key: 'verbs' as const, name: 'Verbos', icon: Pencil, href: `/languages/${lang.id}/verbs` },
     { key: 'essays' as const, name: 'Redacciones', icon: FileText, href: `/languages/${lang.id}/essays` },
     { key: 'structures' as const, name: 'Estructuras', icon: Sparkles, href: `/languages/${lang.id}/structures` },
   ];
 
-  const sectionCount = (key: 'vocabulary' | 'verbs' | 'essays' | 'structures' | 'dictation' | 'books') => {
+  const sectionCount = (key: 'vocabulary' | 'verbs' | 'essays' | 'structures' | 'books') => {
     if (!due) return 0;
     if (key === 'essays' || key === 'books') return 0;
     return due[key];
   };
-  const totalDue = due ? due.vocabulary + due.verbs + due.structures + due.dictation : 0;
+  const totalDue = due ? due.vocabulary + due.verbs + due.structures : 0;
 
   return (
     <div>
@@ -112,6 +112,8 @@ function LanguageNode({
 
 export default function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { user, logout } = useAuth();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedLanguages, setExpandedLanguages] = useState<Set<string>>(new Set());
@@ -151,6 +153,12 @@ export default function Layout({ children }: LayoutProps) {
 
   const isActive = (href: string) => {
     return location.pathname === href || location.pathname.startsWith(href + '/');
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    queryClient.clear();
+    navigate('/login', { replace: true });
   };
 
   const navTo = (href: string) => {
@@ -208,6 +216,20 @@ export default function Layout({ children }: LayoutProps) {
               />
             ))}
           </nav>
+
+          {/* Logout */}
+          <div className="border-t border-sidebar-border px-3 py-3">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all text-sm text-sidebar-foreground hover:bg-sidebar-accent/50"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="font-medium">Salir</span>
+            </button>
+            {user && (
+              <p className="px-4 pt-1 text-xs text-muted-foreground truncate" title={user.email}>{user.email}</p>
+            )}
+          </div>
         </div>
       </aside>
 

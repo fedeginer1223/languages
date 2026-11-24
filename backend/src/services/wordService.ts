@@ -2,6 +2,16 @@ import { prisma } from '../utils/prisma';
 import { CreateWordDto, CreateWordsBatchDto } from '../types';
 import { calculateSuccessRate, calculateWeightedScore } from '../utils/validation';
 
+/** Lower-case, accent-insensitive, whitespace-collapsed key for dedupe/search. */
+export function normalizeTerm(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 type SortBy = 'learning' | 'recent' | 'alphabetical';
 
 export const wordService = {
@@ -78,8 +88,13 @@ export const wordService = {
    */
   async importForLanguage(
     languageId: string,
-    data: { topicName: string; words: { term: string; definition: string }[] }
+    data: { topicName: string; words: { term: string; definition: string }[] },
+    options: { languageWide?: boolean } = {}
   ) {
+    // languageWide: dedupe against every word of the language (case/accent-insensitive)
+    // and report which topic holds each duplicate. Default keeps the topic-scoped behavior.
+    const languageWide = options.languageWide === true;
+    const norm = (t: string) => (languageWide ? normalizeTerm(t) : t.toLowerCase());
     const topicName = data.topicName.trim();
     if (!topicName) throw new Error('topicName is required');
 
@@ -101,18 +116,25 @@ export const wordService = {
     // Dedupe within the incoming batch (first-wins) by lower-cased term.
     const seen = new Map<string, { term: string; definition: string }>();
     for (const w of cleaned) {
-      const key = w.term.toLowerCase();
+      const key = norm(w.term);
       if (!seen.has(key)) seen.set(key, w);
     }
     const unique = Array.from(seen.values());
 
     // Skip terms that already exist in this topic (case-insensitive).
     const existing = await prisma.word.findMany({
-      where: { topicId: topic.id },
-      select: { term: true },
+      where: languageWide ? { topic: { languageId } } : { topicId: topic.id },
+      select: { term: true, topic: { select: { name: true } } },
     });
-    const existingSet = new Set(existing.map((w) => w.term.toLowerCase()));
-    const toInsert = unique.filter((w) => !existingSet.has(w.term.toLowerCase()));
+    const existingMap = new Map<string, string>();
+    for (const w of existing) {
+      const k = norm(w.term);
+      if (!existingMap.has(k)) existingMap.set(k, w.topic.name);
+    }
+    const toInsert = unique.filter((w) => !existingMap.has(norm(w.term)));
+    const duplicates = unique
+      .filter((w) => existingMap.has(norm(w.term)))
+      .map((w) => ({ term: w.term, existingTopic: existingMap.get(norm(w.term))! }));
 
     let inserted = 0;
     if (toInsert.length > 0) {
@@ -139,6 +161,7 @@ export const wordService = {
       totalProvided: data.words.length,
       totalUnique: unique.length,
       alreadyExisting: unique.length - toInsert.length,
+      duplicates,
       inserted,
     };
   },

@@ -441,3 +441,12 @@ model BookHighlight {
   @@index([bookId, pageIndex])
   @@map("book_highlights")
 }
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  lastLoginAt  DateTime?
+  @@map("users")
+}

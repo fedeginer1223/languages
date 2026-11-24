@@ -31,3 +31,9 @@ build/
 
 # Claude Code
 .claude/
+
+# Local data / secrets
+backend/backups/
+backend/tts-cache/
+*.env
+!.env.example

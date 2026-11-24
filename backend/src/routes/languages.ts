@@ -13,6 +13,9 @@ languageRouter.get('/:id', languageController.getById);
 languageRouter.put('/:id', languageController.update);
 languageRouter.delete('/:id', languageController.delete);
 languageRouter.get('/:id/due-counts', languageController.getDueCounts);
+languageRouter.get('/:id/srs/backlog', languageController.getSrsBacklog);
+
+languageRouter.get('/:languageId/today', languageController.getToday);
 
 // Topics for a language
 languageRouter.get('/:languageId/topics', topicController.getByLanguageId);

@@ -5,7 +5,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Filter, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { MultiSelectList } from '@/components/ui/multi-select';
-import { Input } from '@/components/ui/input';
+import { Input } from '@/components/ui/Input';
 import type { DataTableColumnMeta } from './types';
 
 interface DataTableColumnHeaderProps<TData> {

@@ -26,3 +26,6 @@ npm-debug.log*
 # Prisma
 .env
 tts-cache/
+
+# SRS rebalance backups
+/backups/

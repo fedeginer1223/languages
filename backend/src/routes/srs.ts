@@ -10,3 +10,4 @@ srsRouter.post('/:languageId/extra', srsController.addExtraWords);
 srsRouter.post('/words/:wordId/advance', srsController.advanceWord);
 srsRouter.post('/words/:wordId/reset', srsController.resetWord);
 srsRouter.post('/words/:wordId/record-attempt', srsController.recordAttempt);
+srsRouter.get('/multiple-choice/:wordId', srsController.getMultipleChoiceOptions);

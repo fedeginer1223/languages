@@ -4,12 +4,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Plus, Dumbbell, Trash2, Pencil, X, Sparkles, Loader2, RefreshCw, Check, Languages,
 } from 'lucide-react';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
 import { Label } from '../components/ui/label';
-import { Badge } from '../components/ui/badge';
+import { Badge } from '../components/ui/Badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
-import { Card, CardContent } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/Card';
 import { DataTable } from '../components/ui/data-table/DataTable';
 import type { DataTableColumn } from '../components/ui/data-table/types';
 import { structuresApi, type Structure, type TranslationExampleDraft } from '../services/api';

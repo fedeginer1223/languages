@@ -9,7 +9,8 @@
     "start": "prisma migrate deploy && tsx src/index.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "create-user": "tsx scripts/createUser.ts"
   },
   "keywords": [
     "language",
@@ -21,12 +22,15 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
     "@prisma/client": "^5.22.0",
+    "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "french-verbs": "^5.4.0",
     "french-verbs-lefff": "^3.4.0",
+    "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.577.0",
     "multer": "^2.4.0",
     "pdf-parse": "^1.1.1",
@@ -36,8 +40,11 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.17",
-    "@types/express": "^5.0.0",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.3.0",
     "@types/node": "^22.10.2",
     "@types/pdf-parse": "^1.1.5",

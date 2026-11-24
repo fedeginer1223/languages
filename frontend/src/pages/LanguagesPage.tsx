@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Plus, BookOpen, GraduationCap, Trash2, BarChart3 } from 'lucide-react';
+import { Plus, BookOpen, Trash2 } from 'lucide-react';
 import { languagesApi } from '../services/api';
-import { Button } from '../components/ui/button';
-import { Card, CardContent, CardHeader } from '../components/ui/card';
-import { Badge } from '../components/ui/badge';
-import { Input } from '../components/ui/input';
+import { Button } from '../components/ui/Button';
+import { Card, CardContent, CardHeader } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
+import { Input } from '../components/ui/Input';
 import { Label } from '../components/ui/label';
 
 export default function LanguagesPage() {
@@ -168,24 +168,8 @@ export default function LanguagesPage() {
                 <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                   <Button
                     size="sm"
-                    variant="default"
-                    onClick={() => navigate(`/training?languageId=${language.id}&mode=by-level`)}
-                    className="flex items-center gap-1 flex-1"
-                  >
-                    <GraduationCap className="w-4 h-4" />
-                    Train
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => navigate(`/languages/${language.id}/stats`)}
-                    className="flex items-center gap-1"
-                  >
-                    <BarChart3 className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    size="sm"
                     variant="destructive"
+                    className="ml-auto"
                     onClick={() => {
                       if (window.confirm('Delete this language?')) {
                         deleteMutation.mutate(language.id);

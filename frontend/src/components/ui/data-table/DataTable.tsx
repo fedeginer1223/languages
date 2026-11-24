@@ -14,7 +14,7 @@ import {
 } from '@tanstack/react-table';
 import type { SortingState, ColumnFiltersState, VisibilityState, RowSelectionState, FilterFn } from '@tanstack/react-table';
 import { cn } from '@/lib/utils';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/Card';
 import { DataTableColumnHeader } from './DataTableColumnHeader';
 import { DataTablePagination } from './DataTablePagination';
 import { DataTableToolbar } from './DataTableToolbar';

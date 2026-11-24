@@ -2,13 +2,15 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, CheckCircle2, Loader2, ChevronRight, TimerReset, XCircle, RotateCcw } from 'lucide-react';
-import { Button } from '../components/ui/button';
-import { Card, CardContent } from '../components/ui/card';
-import { Input } from '../components/ui/input';
-import { Badge } from '../components/ui/badge';
+import { SessionSizeControl, useSessionSize } from '../components/SessionSizeControl';
+import { Button } from '../components/ui/Button';
+import { Card, CardContent } from '../components/ui/Card';
+import { Input } from '../components/ui/Input';
+import { Badge } from '../components/ui/Badge';
+import type { JudgeExampleResult } from '../types';
 import { structuresApi, type StructureSessionItem, type StructureExample } from '../services/api';
 
-type Phase = 'pre' | 'input' | 'result-correct' | 'retype' | 'retry-banner' | 'done';
+type Phase = 'pre' | 'input' | 'judging' | 'result-correct' | 'retype' | 'retry-banner' | 'done';
 
 /** Loose match matching vocab semantics: case-insensitive, accents kept, curly quotes
  * normalized, trailing punctuation stripped, whitespace collapsed. */
@@ -28,6 +30,55 @@ function isCorrect(userAnswer: string, reference: string): boolean {
   return normalizeForMatch(userAnswer) === normalizeForMatch(reference);
 }
 
+type DiffPart = { text: string; kind: 'same' | 'add' | 'del' };
+
+/** Word-level diff (LCS over whitespace-split tokens). Returns parts for `a` (deletions) and `b` (additions) separately. */
+function diffWords(a: string, b: string): { aParts: DiffPart[]; bParts: DiffPart[] } {
+  const A = a.split(/\s+/).filter(Boolean);
+  const B = b.split(/\s+/).filter(Boolean);
+  const key = (w: string) => normalizeForMatch(w);
+  const dp: number[][] = Array.from({ length: A.length + 1 }, () => new Array(B.length + 1).fill(0));
+  for (let i = A.length - 1; i >= 0; i--) {
+    for (let j = B.length - 1; j >= 0; j--) {
+      dp[i][j] = key(A[i]) === key(B[j]) ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const aParts: DiffPart[] = [];
+  const bParts: DiffPart[] = [];
+  let i = 0, j = 0;
+  while (i < A.length && j < B.length) {
+    if (key(A[i]) === key(B[j])) {
+      aParts.push({ text: A[i], kind: 'same' });
+      bParts.push({ text: B[j], kind: 'same' });
+      i++; j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      aParts.push({ text: A[i++], kind: 'del' });
+    } else {
+      bParts.push({ text: B[j++], kind: 'add' });
+    }
+  }
+  while (i < A.length) aParts.push({ text: A[i++], kind: 'del' });
+  while (j < B.length) bParts.push({ text: B[j++], kind: 'add' });
+  return { aParts, bParts };
+}
+
+function DiffLine({ parts, mode }: { parts: DiffPart[]; mode: 'del' | 'add' }) {
+  return (
+    <>
+      {parts.map((p, k) => (
+        <span
+          key={k}
+          className={
+            p.kind === 'same' ? '' : mode === 'add' ? 'font-medium text-green-700' : 'line-through text-red-600'
+          }
+        >
+          {p.text}{' '}
+        </span>
+      ))}
+    </>
+  );
+}
+
 function pickLeastMasteredExample(structure: StructureSessionItem): StructureExample | null {
   const usable = structure.examples.filter((e) => (e.spanish ?? '').trim().length > 0);
   if (usable.length === 0) return null;
@@ -43,7 +94,7 @@ export default function StructureSrsTrainingPage() {
 
   // Pre-start config
   const [started, setStarted] = useState(false);
-  const [newCount, setNewCount] = useState(15);
+  const [sessionSize, setSessionSize] = useSessionSize(languageId);
   const [selectionMode, setSelectionMode] = useState<'fifo' | 'lifo' | 'random'>('random');
 
   // Session state
@@ -69,20 +120,32 @@ export default function StructureSrsTrainingPage() {
   const [answer, setAnswer] = useState('');
   const [retypeAnswer, setRetypeAnswer] = useState('');
   const [lastWrong, setLastWrong] = useState<string>('');
+  const [judgeResult, setJudgeResult] = useState<JudgeExampleResult | null>(null);
+  const [noAiNote, setNoAiNote] = useState(false);
+  const shownAtRef = useRef<number>(Date.now());
 
   // Summary counters
   const [completedStructures, setCompletedStructures] = useState(0);
   const [advancedStructures, setAdvancedStructures] = useState(0);
   const [correctExamples, setCorrectExamples] = useState(0);
   const [wrongExamples, setWrongExamples] = useState(0);
+  const [almostExamples, setAlmostExamples] = useState(0);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const retypeInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['structure-daily', languageId, newCount, selectionMode, started, sessionId],
-    queryFn: () => structuresApi.getDaily(languageId!, newCount, selectionMode),
+    queryKey: ['structure-daily', languageId, sessionSize, selectionMode, started, sessionId],
+    queryFn: () => structuresApi.getDaily(languageId!, undefined, selectionMode, sessionSize),
     enabled: started && !!languageId,
+    refetchOnWindowFocus: false,
+  });
+
+  // Preview of the next session (pre-start composition line and finished-screen counters).
+  const { data: preview } = useQuery({
+    queryKey: ['structure-daily-preview', languageId, sessionSize, selectionMode],
+    queryFn: () => structuresApi.getDaily(languageId!, undefined, selectionMode, sessionSize),
+    enabled: (!started || phase === 'done') && !!languageId,
     refetchOnWindowFocus: false,
   });
 
@@ -104,6 +167,9 @@ export default function StructureSrsTrainingPage() {
     setAnswer('');
     setRetypeAnswer('');
     setLastWrong('');
+    setJudgeResult(null);
+    setNoAiNote(false);
+    shownAtRef.current = Date.now();
     setPhase('input');
   }, [currentStructure?.id, roundNumber]);
 
@@ -118,6 +184,7 @@ export default function StructureSrsTrainingPage() {
     if (phase !== 'done' || !languageId) return;
     queryClient.invalidateQueries({ queryKey: ['due-counts', languageId] });
     queryClient.invalidateQueries({ queryKey: ['structures', languageId] });
+    queryClient.invalidateQueries({ queryKey: ['structure-daily-preview'] });
   }, [phase, languageId, queryClient]);
 
   /** Advance to next structure in the current round, or transition to the retry
@@ -145,7 +212,7 @@ export default function StructureSrsTrainingPage() {
     // useEffect on currentStructure.id / roundNumber will reset per-item state and phase.
   }, [retryQueue]);
 
-  const submitAnswer = useCallback(() => {
+  const submitAnswer = useCallback(async () => {
     if (!currentExample || !currentStructure) return;
     const trimmed = answer.trim();
     const isFirstTime = !seenIdsRef.current.has(currentStructure.id);
@@ -154,12 +221,30 @@ export default function StructureSrsTrainingPage() {
     if (!trimmed) {
       setWrongExamples((c) => c + 1);
       setLastWrong('');
+      setJudgeResult(null);
+      setNoAiNote(false);
       structuresApi.recordExampleAttempt(currentExample.id, false).catch(() => undefined);
       setPhase('retype');
       return;
     }
-    const correct = isCorrect(trimmed, currentExample.text);
-    if (correct) {
+
+    setPhase('judging');
+    let result: JudgeExampleResult;
+    let noAi = false;
+    try {
+      result = await structuresApi.judgeExample(currentExample.id, trimmed, Date.now() - shownAtRef.current);
+      noAi = result.source === 'fallback';
+    } catch {
+      noAi = true;
+      result = isCorrect(trimmed, currentExample.text)
+        ? { verdict: 'valid', explanation: '', source: 'fallback' }
+        : { verdict: 'invalid', explanation: '', source: 'fallback' };
+    }
+    setJudgeResult(result);
+    setNoAiNote(noAi);
+
+    if (result.verdict === 'valid' || result.verdict === 'almost') {
+      if (result.verdict === 'almost') setAlmostExamples((c) => c + 1);
       setCorrectExamples((c) => c + 1);
       structuresApi.recordExampleAttempt(currentExample.id, true).catch(() => undefined);
       if (isFirstTime) {
@@ -252,8 +337,9 @@ export default function StructureSrsTrainingPage() {
           </div>
         </div>
         <PreStart
-          newCount={newCount}
-          setNewCount={setNewCount}
+          sessionSize={sessionSize}
+          setSessionSize={setSessionSize}
+          summary={preview?.summary}
           selectionMode={selectionMode}
           setSelectionMode={setSelectionMode}
           onStart={() => { setSessionId(Date.now()); setStarted(true); }}
@@ -267,6 +353,8 @@ export default function StructureSrsTrainingPage() {
   }
 
   if (phase === 'done') {
+    const ps = preview?.summary;
+    const stillDue = ps?.reviewCount ?? 0;
     return (
       <div className="p-8 max-w-2xl mx-auto">
         <Card>
@@ -281,6 +369,9 @@ export default function StructureSrsTrainingPage() {
                 {' · '}
                 <span className="text-red-700 font-medium">{wrongExamples} fallos</span>
               </p>
+              <p>{correctExamples - almostExamples} válidas · {almostExamples} casi · {wrongExamples} inválidas</p>
+              {stillDue > 0 && <p>Aún quedan {stillDue} {stillDue === 1 ? 'repaso' : 'repasos'} para hoy</p>}
+              {ps?.tomorrowCount !== undefined && <p>Mañana te esperan {ps.tomorrowCount} repasos</p>}
             </div>
             <div className="flex gap-3 justify-center pt-2">
               <Button variant="outline" onClick={() => navigate(`/languages/${languageId}/structures`)}>Volver</Button>
@@ -290,7 +381,7 @@ export default function StructureSrsTrainingPage() {
                 seenIdsRef.current = new Set();
                 setCurrentExample(null);
                 setCompletedStructures(0); setAdvancedStructures(0);
-                setCorrectExamples(0); setWrongExamples(0);
+                setCorrectExamples(0); setWrongExamples(0); setAlmostExamples(0);
                 setPhase('pre');
               }}>
                 <TimerReset className="w-4 h-4 mr-1" /> Otra sesión
@@ -366,21 +457,66 @@ export default function StructureSrsTrainingPage() {
         </Card>
       )}
 
+      {phase === 'judging' && currentExample && (
+        <Card className="border-2">
+          <CardContent className="pt-6 pb-6 space-y-5">
+            <div>
+              <div className="text-xs uppercase text-muted-foreground tracking-wider mb-1">Traduce al idioma objetivo</div>
+              <div className="text-2xl leading-snug">{currentExample.spanish}</div>
+            </div>
+            <Input value={answer} disabled readOnly className="text-lg h-12" />
+            <p className="text-sm text-muted-foreground flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" /> Evaluando…
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {phase === 'result-correct' && currentExample && (
-        <Card className="border-2 border-green-300">
+        <Card className={`border-2 ${judgeResult?.verdict === 'almost' ? 'border-amber-300' : 'border-green-300'}`}>
           <CardContent className="pt-6 pb-6 space-y-4">
-            <div className="flex items-center gap-2 text-green-600">
-              <CheckCircle2 className="w-6 h-6" />
-              <span className="text-lg font-semibold">Correcto</span>
-            </div>
-            <div>
-              <div className="text-xs uppercase text-muted-foreground tracking-wider mb-1">Prompt</div>
-              <div className="text-base">{currentExample.spanish}</div>
-            </div>
-            <div>
-              <div className="text-xs uppercase text-muted-foreground tracking-wider mb-1">Tu respuesta</div>
-              <div className="text-lg font-medium text-green-800">{answer}</div>
-            </div>
+            {(() => {
+              const almost = judgeResult?.verdict === 'almost';
+              const corrected = judgeResult?.corrected;
+              const differsFromRef = normalizeForMatch(answer) !== normalizeForMatch(currentExample.text);
+              const diff = almost && corrected ? diffWords(answer.trim(), corrected) : null;
+              return (
+                <>
+                  <div className={`flex items-center gap-2 ${almost ? 'text-amber-600' : 'text-green-600'}`}>
+                    <CheckCircle2 className="w-6 h-6" />
+                    <span className="text-lg font-semibold">{almost ? 'Casi' : 'Correcto'}</span>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase text-muted-foreground tracking-wider mb-1">Prompt</div>
+                    <div className="text-base">{currentExample.spanish}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase text-muted-foreground tracking-wider mb-1">Tu respuesta</div>
+                    <div className={`text-lg font-medium ${almost ? 'text-amber-900' : 'text-green-800'}`}>
+                      {diff ? <DiffLine parts={diff.aParts} mode="del" /> : answer}
+                    </div>
+                  </div>
+                  {almost && (
+                    <div className="rounded-md bg-amber-50 border border-amber-200 p-3 space-y-2">
+                      {corrected && diff && (
+                        <div>
+                          <div className="text-xs uppercase text-amber-900 font-semibold tracking-wider mb-0.5">Corrección</div>
+                          <div className="text-lg font-medium text-amber-900"><DiffLine parts={diff.bParts} mode="add" /></div>
+                        </div>
+                      )}
+                      {judgeResult?.explanation && <p className="text-sm text-amber-900">{judgeResult.explanation}</p>}
+                    </div>
+                  )}
+                  {differsFromRef && (
+                    <div className="rounded-md bg-green-50 border border-green-200 p-3">
+                      <div className="text-xs uppercase text-green-800 font-semibold tracking-wider mb-0.5">Otra forma de decirlo</div>
+                      <div className="text-base font-medium text-green-900">{currentExample.text}</div>
+                    </div>
+                  )}
+                  {noAiNote && <p className="text-xs text-muted-foreground">Sin IA: comparado con la referencia</p>}
+                </>
+              );
+            })()}
             <Button onClick={goToNextStructure} className="w-full" size="lg">
               Continuar <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
@@ -412,6 +548,17 @@ export default function StructureSrsTrainingPage() {
                 Sin respuesta — cuenta como fallo.
               </div>
             )}
+
+            {judgeResult?.explanation && (
+              <p className="text-sm text-muted-foreground">{judgeResult.explanation}</p>
+            )}
+            {judgeResult?.corrected && (
+              <div className="rounded-md bg-green-50 border border-green-200 p-3">
+                <div className="text-xs uppercase text-green-800 font-semibold tracking-wider mb-0.5">Tu frase corregida</div>
+                <div className="text-base font-medium text-green-900">{judgeResult.corrected}</div>
+              </div>
+            )}
+            {noAiNote && <p className="text-xs text-muted-foreground">Sin IA: comparado con la referencia</p>}
 
             <div className="rounded-md bg-amber-50 border border-amber-200 p-3">
               <div className="text-xs uppercase text-amber-900 font-semibold tracking-wider mb-1">Referencia</div>
@@ -472,10 +619,11 @@ export default function StructureSrsTrainingPage() {
 // ============ Subcomponents ============
 
 function PreStart({
-  newCount, setNewCount, selectionMode, setSelectionMode, onStart,
+  sessionSize, setSessionSize, summary, selectionMode, setSelectionMode, onStart,
 }: {
-  newCount: number;
-  setNewCount: (n: number) => void;
+  sessionSize: number;
+  setSessionSize: (n: number) => void;
+  summary?: { reviewsInSession?: number; newInSession?: number; remainingReviews?: number; totalCount?: number };
   selectionMode: 'fifo' | 'lifo' | 'random';
   setSelectionMode: (m: 'fifo' | 'lifo' | 'random') => void;
   onStart: () => void;
@@ -490,13 +638,7 @@ function PreStart({
           </p>
         </div>
 
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-sm font-medium">Estructuras nuevas a introducir</label>
-            <span className="text-2xl font-bold">{newCount}</span>
-          </div>
-          <input type="range" min={0} max={50} value={newCount} onChange={(e) => setNewCount(parseInt(e.target.value))} className="w-full" />
-        </div>
+        <SessionSizeControl value={sessionSize} onChange={setSessionSize} summary={summary} />
 
         <div>
           <label className="text-sm font-medium mb-2 block">¿Qué estructuras nuevas priorizar?</label>
@@ -507,7 +649,9 @@ function PreStart({
           </div>
         </div>
 
-        <Button onClick={onStart} className="w-full" size="lg">Comenzar</Button>
+        <Button onClick={onStart} className="w-full" size="lg" disabled={summary?.totalCount === 0}>
+          Comenzar{summary?.totalCount !== undefined ? ` (${summary.totalCount})` : ''}
+        </Button>
       </CardContent>
     </Card>
   );

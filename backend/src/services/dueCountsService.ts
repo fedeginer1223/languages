@@ -1,4 +1,5 @@
 import { prisma } from '../utils/prisma';
+import { srsBacklogService } from './srsBacklogService';
 
 const MAX_SRS_LEVEL = 6;
 
@@ -18,9 +19,18 @@ function endOfDay(date: Date): Date {
  */
 export const dueCountsService = {
   async getForLanguage(languageId: string) {
+    // Keep the daily backlog sane before counting (once per day per language).
+    try {
+      const report = await srsBacklogService.rebalanceIfNeeded(languageId);
+      const moved = report.vocab.moved + report.structures.moved;
+      if (moved > 0) console.log('[srs-rebalance]', languageId, JSON.stringify(report));
+    } catch (err) {
+      console.error('[srs-rebalance] failed:', err);
+    }
+
     const todayEnd = endOfDay(new Date());
 
-    const [vocabulary, verbs, structures, dictation] = await Promise.all([
+    const [vocabulary, verbs, structures] = await Promise.all([
       prisma.word.count({
         where: {
           topic: { languageId, name: { not: 'Errores de redacción' } },
@@ -57,16 +67,8 @@ export const dueCountsService = {
           examples: { some: { AND: [{ spanish: { not: null } }, { spanish: { not: '' } }] } },
         },
       }),
-      prisma.word.count({
-        where: {
-          topic: { languageId, name: { not: 'Errores de redacción' } },
-          source: 'vocabulary',
-          dictationSrsLevel: { gt: 0, lt: MAX_SRS_LEVEL },
-          dictationNextReviewAt: { lte: todayEnd },
-        },
-      }),
     ]);
 
-    return { vocabulary, verbs, structures, dictation };
+    return { vocabulary, verbs, structures };
   },
 };

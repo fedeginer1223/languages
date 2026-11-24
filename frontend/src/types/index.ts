@@ -134,63 +134,21 @@ export interface Error {
   updatedAt: string;
 }
 
-export interface TrainingSession {
-  sessionId: string;
-  mode: 'by-level' | 'by-topic';
-  totalQuestions: number;
-  questions: TrainingQuestion[];
+/** Fields added to every daily-session summary by the session composer. */
+export interface SessionComposition {
+  sessionSize: number;
+  reviewsInSession: number;
+  newInSession: number;
+  remainingReviews: number;
+  remainingNew: number;
+  tomorrowCount?: number;
 }
 
-export interface TrainingQuestion {
-  id: string;
-  wordId: string;
-  definition: string;
-  order: number;
-  type: 'multiple_choice' | 'written';
-  source: 'vocabulary' | 'error';
-  answered?: boolean;
-  correct?: boolean;
-}
+export type TranslationVerdict = 'valid' | 'almost' | 'invalid';
 
-export interface ValidationResult {
-  correct: boolean;
-  expectedAnswer: string;
-  explanation?: string;
-  stats: {
-    attempts: number;
-    correctCount: number;
-    successRate: number;
-  };
-}
-
-export interface Stats {
-  languageId: string;
-  topicsCount: number;
-  wordsCount: number;
-  verbsCount: number;
-  essaysCount: number;
-  avgSuccessRate: number;
-  mostDifficultWords: {
-    id: string;
-    term: string;
-    successRate: number;
-    attempts: number;
-  }[];
-  recentActivity: {
-    last7Days: {
-      attempts: number;
-      correctCount: number;
-      successRate: number;
-    };
-  };
-}
-
-export interface ErrorStats {
-  totalErrors: number;
-  byType: Record<string, number>;
-  mostCommonErrors: {
-    original: string;
-    corrected: string;
-    occurrences: number;
-  }[];
+export interface JudgeExampleResult {
+  verdict: TranslationVerdict;
+  corrected?: string;
+  explanation: string;
+  source: 'exact' | 'ai' | 'fallback';
 }

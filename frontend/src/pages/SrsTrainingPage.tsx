@@ -2,12 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X, Calendar, Star, FastForward, ChevronDown } from 'lucide-react';
-import { srsApi, trainingApi, topicsApi } from '../services/api';
+import { srsApi, topicsApi } from '../services/api';
 import type { SrsWord } from '../services/api';
-import { Button } from '../components/ui/button';
-import { Card, CardContent } from '../components/ui/card';
-import { Badge } from '../components/ui/badge';
-import { Input } from '../components/ui/input';
+import { SessionSizeControl, useSessionSize } from '../components/SessionSizeControl';
+import { Button } from '../components/ui/Button';
+import { Card, CardContent } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
+import { Input } from '../components/ui/Input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/dialog';
 
 const FRENCH_CHARS = ['à', 'â', 'ç', 'é', 'è', 'ê', 'ë', 'í', 'î', 'ñ', 'ó', 'ù', '^'];
@@ -229,7 +230,7 @@ export default function SrsTrainingPage() {
   const [mcPassedIds, setMcPassedIds] = useState<Set<string>>(new Set());
   const learnedRef = useRef<Set<string>>(new Set());
   const [todayLearned, setTodayLearned] = useState(0);
-  const [newWordCount, setNewWordCount] = useState(15);
+  const [sessionSize, setSessionSize] = useSessionSize(languageId);
   const [selectionMode, setSelectionMode] = useState<'fifo' | 'lifo' | 'random'>('random');
 
   const [answer, setAnswer] = useState('');
@@ -240,8 +241,8 @@ export default function SrsTrainingPage() {
   const [loadingOptions, setLoadingOptions] = useState(false);
 
   const { data: dailySession, isLoading, refetch } = useQuery({
-    queryKey: ['srs-daily', languageId, topicIds, newWordCount, selectionMode, errorsOnly],
-    queryFn: () => srsApi.getDailySession(languageId!, topicIds, newWordCount, selectionMode, errorsOnly),
+    queryKey: ['srs-daily', languageId, topicIds, sessionSize, selectionMode, errorsOnly],
+    queryFn: () => srsApi.getDailySession(languageId!, topicIds, undefined, selectionMode, errorsOnly, sessionSize),
     enabled: !!languageId,
   });
 
@@ -263,7 +264,7 @@ export default function SrsTrainingPage() {
   useEffect(() => {
     if (!currentWord || phase !== 'mc' || result) return;
     setLoadingOptions(true); setMultipleChoiceOptions([]);
-    trainingApi.getMultipleChoiceOptions(currentWord.id).then(d => { setMultipleChoiceOptions(d.options); setLoadingOptions(false); }).catch(() => setLoadingOptions(false));
+    srsApi.getMultipleChoiceOptions(currentWord.id).then(d => { setMultipleChoiceOptions(d.options); setLoadingOptions(false); }).catch(() => setLoadingOptions(false));
   }, [currentWord?.id, phase, result, currentIndex]);
 
   useEffect(() => { if (phase === 'written' && !result && inputRef.current) setTimeout(() => inputRef.current?.focus(), 50); }, [currentIndex, phase, result, showRetryBanner]);
@@ -601,14 +602,8 @@ export default function SrsTrainingPage() {
                 </div>
               )}
 
-              {/* New word count */}
-              <div className="space-y-2 p-3 bg-muted/30 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Palabras nuevas</p>
-                  <span className="text-sm font-bold">{newWordCount}</span>
-                </div>
-                <input type="range" min="0" max={Math.min(50, s.pending)} value={newWordCount} onChange={e => setNewWordCount(parseInt(e.target.value))} className="w-full" />
-              </div>
+              {/* Session size */}
+              <SessionSizeControl value={sessionSize} onChange={setSessionSize} summary={s} />
 
               {/* Selection mode */}
               <div className="flex items-center gap-2">
@@ -651,12 +646,16 @@ export default function SrsTrainingPage() {
   // Finished
   if (isAllDone || noMoreBatches) {
     const stillDue = dailySession?.summary.reviewCount ?? 0;
+    const tomorrowCount = dailySession?.summary.tomorrowCount;
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <Card className="max-w-2xl w-full"><CardContent className="pt-12 pb-12 text-center">
           <Star className="w-16 h-16 mx-auto mb-4 text-yellow-500" />
           <h2 className="text-3xl font-bold mb-4">¡Repaso completado!</h2>
           <p className="text-xl text-muted-foreground mb-4">{todayLearned} palabras repasadas hoy</p>
+          {tomorrowCount !== undefined && (
+            <p className="text-sm text-muted-foreground mb-4">Mañana te esperan {tomorrowCount} repasos</p>
+          )}
           {stillDue > 0 && (
             <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg text-left">
               <p className="text-sm text-amber-900 font-medium">

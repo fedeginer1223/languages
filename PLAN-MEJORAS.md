@@ -8,18 +8,17 @@ Cada punto lleva: **diagnóstico** (qué pasa hoy y por qué), **propuesta** (qu
 
 ## 1. Sesiones equilibradas: 50 % repaso / 50 % nuevas, con tope diario
 
-**Diagnóstico.** El pre-start de vocabulario y dictado mete *todos* los repasos pendientes más N nuevas (slider). Si hay 300 repasos, la sesión es 300 + 15: casi nada nuevo y una montaña de repaso. El tope no existe. Estructuras funciona igual (todas las due + N nuevas). Verbos es distinto (un verbo entero por sesión).
+**Diagnóstico.** El pre-start de vocabulario mete *todos* los repasos pendientes más N nuevas (slider). Si hay 300 repasos, la sesión es 300 + 15: casi nada nuevo y una montaña de repaso. El tope no existe. Estructuras funciona igual (todas las due + N nuevas). Verbos es distinto (un verbo entero por sesión).
 
 **Propuesta.**
 - Un único control **"Tamaño de sesión"** (por defecto 30, recordado por idioma) en vez de "palabras nuevas".
-- La sesión se compone con una **proporción** (por defecto 50/50, ajustable con un segundo control 0–100 % de nuevas, recordado por idioma).
+- La sesión se compone **50/50**: mitad repasos, mitad nuevas (sin control de proporción, decisión del usuario). Si no hay suficientes de un lado, se rellena con el otro.
 - Repasos: se eligen primero las **más atrasadas** y, a igualdad, las de **mayor nivel** (son las que más cuesta recuperar). Lo que no cabe espera sin penalización.
 - Nuevas: del topic elegido, en el orden elegido (azar / antiguas / recientes).
-- Si no hay suficientes repasos, se rellena con nuevas, y al revés.
-- Mismo componente de pre-start para vocabulario, dictado y estructuras. En verbos, no aplica (ya es "un verbo por sesión"); solo se unifica el aspecto.
+- Mismo componente de pre-start para vocabulario y estructuras. En verbos, no aplica (ya es "un verbo por sesión"); solo se unifica el aspecto.
 - Badge del sidebar: pasa a significar "repasos que entrarían hoy" (hasta el tope), con `+` si hay más (`30+`), en lugar del total crudo.
 
-**Alcance.** `srsService.getDailyGlobal`, `dictationService.getDaily`, `structureSrsService.getDaily`, `dueCountsService`, pre-starts de `SrsTrainingPage`, `DictationTrainingPage`, `StructureSrsTrainingPage` (extraer a `SessionPreStart.tsx`).
+**Alcance.** `srsService.getDailyGlobal`, `structureSrsService.getDaily`, `dueCountsService`, pre-starts de `SrsTrainingPage`, `StructureSrsTrainingPage` (extraer a `SessionPreStart.tsx`).
 **Esfuerzo.** M.
 
 ## 2. Volver tras días sin entrar: nunca más "424 para hoy"
@@ -57,7 +56,6 @@ Cada punto lleva: **diagnóstico** (qué pasa hoy y por qué), **propuesta** (qu
 | Módulo / página | Estado | Alcanzable desde el menú |
 |---|---|---|
 | Vocabulario (tabla + SRS) | activo | sí |
-| Dictado | activo | sí |
 | Libros | activo | sí |
 | Verbos (SRS "verbo del día") | activo | sí |
 | Verbos — entrenar un verbo suelto (`VerbTrainingPage`) | antiguo | desde la tarjeta del verbo |
@@ -97,7 +95,7 @@ Cada punto lleva: **diagnóstico** (qué pasa hoy y por qué), **propuesta** (qu
 
 **Propuesta, por orden de impacto.**
 1. **Página "Hoy" por idioma** (nueva pantalla de entrada): repasos que entran hoy por módulo, nuevas sugeridas, un botón "Empezar" por módulo, racha de días y las 3 últimas sesiones. La tabla de vocabulario pasa a ser una pestaña, no la portada.
-2. **Pre-start unificado** (tamaño, proporción, topic, orden) y **pantalla de sesión unificada** (barra con nuevas/repasos, atajos de teclado visibles, mismo tratamiento de acierto/fallo/reintento en vocab, dictado y estructuras).
+2. **Pre-start unificado** (tamaño, proporción, topic, orden) y **pantalla de sesión unificada** (barra con nuevas/repasos, atajos de teclado visibles, mismo tratamiento de acierto/fallo/reintento en vocab y estructuras).
 3. **Tipografía y color** coherentes con el lector: serif en lo que se lee, sans en controles; modo oscuro.
 4. **Tabla de vocabulario**: búsqueda instantánea, filtros por nivel/topic/atrasadas, edición en línea, y un script asistido por IA para **normalizar las entradas antiguas** a artículo indefinido (`la tartiflette` → `une tartiflette`).
 5. **Móvil**: el lector y las sesiones deben funcionar en el teléfono si vas a usar la app desplegada desde él (hoy el lector está pensado para pantalla ancha).
@@ -114,13 +112,13 @@ Cada punto lleva: **diagnóstico** (qué pasa hoy y por qué), **propuesta** (qu
 
 ## 8. Publicar la app (Railway)
 
-**Diagnóstico.** `package.json` raíz ya tiene `build`/`start` pensados para Railway y el backend sirve el `dist` del frontend; `start` ejecuta `prisma migrate deploy`. Falta lo esencial: **no hay autenticación**. Publicada tal cual, cualquiera que encuentre la URL puede usar (y pagar con tus claves) Anthropic y OpenAI, y borrar tus datos.
+**Diagnóstico.** `package.json` raíz ya tiene `build`/`start` pensados para Railway y el backend sirve el `dist` del frontend; `start` ejecuta `prisma migrate deploy`. Falta lo esencial: **no hay autenticación**. Publicada tal cual, cualquiera que encuentre la URL puede usar (y pagar con tus claves) Anthropic, y borrar tus datos.
 
 **Propuesta.**
 0. Commit del estado actual + `.env.example` + `README` con arranque local.
-1. **Acceso con contraseña** (un solo usuario): variable `APP_PASSWORD`, pantalla de login, cookie firmada (`httpOnly`, 30 días), middleware que protege `/api/*` excepto `/health` y `/api/v1/ext/*` (que va con API key). Suficiente para uso personal; si algún día hay más usuarios, se cambia por cuentas.
-2. Railway: servicio Node desde la raíz (build/start existentes), plugin PostgreSQL, variables: `DATABASE_URL`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `APP_PASSWORD`, `EXTERNAL_API_KEY`, `BOOK_ANNOTATION_MODEL`, `NODE_ENV=production`.
-3. Migrar datos: `pg_dump` local → `psql` Railway (los PDFs de los libros viven en la BD, viajan con ella). La caché de audio TTS es efímera: se regenera sola o se le da un volumen.
+1. **Acceso con usuario y contraseña**: tabla `User` (email, passwordHash bcrypt), `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`; cookie de sesión firmada (`httpOnly`, `secure` en producción, 30 días) con `SESSION_SECRET`; middleware que protege `/api/*` excepto `/health`, `/auth/*` y `/api/v1/ext/*` (que va con API key). Usuario inicial creado con `npm run create-user` (script interactivo). Sin registro público.
+2. Railway: servicio Node desde la raíz (build/start existentes), plugin PostgreSQL, variables: `DATABASE_URL`, `ANTHROPIC_API_KEY`, `SESSION_SECRET`, `EXTERNAL_API_KEY`, `BOOK_ANNOTATION_MODEL`, `NODE_ENV=production`.
+3. Migrar datos: `pg_dump` local → `psql` Railway (los PDFs de los libros viven en la BD, viajan con ella).
 4. Dominio propio opcional; HTTPS lo da Railway.
 5. Copias de seguridad: `pg_dump` semanal automatizado.
 6. Coste orientativo: plan Hobby ~5 $/mes + Postgres según uso (pequeño) + lo que consumas de IA (hoy ~0,02–0,03 $ por página de libro, céntimos por sesión).
@@ -131,7 +129,7 @@ Cada punto lleva: **diagnóstico** (qué pasa hoy y por qué), **propuesta** (qu
 
 ## Orden propuesto
 
-1. **Rápidos** (una sesión): topic por defecto (7), botones rotos fuera y páginas muertas borradas (4), badge coherente.
+1. **Rápidos** (una sesión): topic por defecto (7), botones rotos fuera y páginas muertas borradas (4), badge coherente. Topic por defecto, botones rotos fuera, páginas muertas borradas (incluido entrenamiento de verbo suelto).
 2. **Sesiones 50/50 + tope + re-escalonado** (1 y 2). Es lo que más cambia tu día a día.
 3. **Estructuras con juez IA** (3).
 4. **Auth + commit + despliegue en Railway** (8). A partir de aquí ya lo usas desde cualquier sitio.
@@ -140,11 +138,13 @@ Cada punto lleva: **diagnóstico** (qué pasa hoy y por qué), **propuesta** (qu
 
 Cada fase: yo diseño y reviso, Sonnet implementa, y verifico en el navegador antes de dártelo.
 
-## Decisiones que necesito
+## Decisiones tomadas (2026-11-23)
 
-1. **Módulos**: ¿usas el repaso de errores de redacción? ¿Y entrenar un verbo suelto desde su tarjeta? ¿Las redacciones las sigues usando? (Lo que no uses, lo quito.)
-2. **Tamaño de sesión por defecto**: ¿30? ¿Y la proporción 50/50 fija o con control?
-3. **Estructuras**: ¿de acuerdo con que `almost` (fallo menor) cuente como acierto mostrando la corrección?
-4. **Móvil**: ¿vas a usar la app desde el teléfono? Cambia bastante el trabajo de frontend.
-5. **Acceso**: ¿te vale contraseña única (sin registro de usuarios)?
-6. **Despliegue**: Railway, confirmado. ¿Dominio propio o `*.up.railway.app`?
+1. **Módulos**: se conservan Redacciones y el repaso de errores de redacción. Se quitan: entrenamiento de un verbo suelto (`VerbTrainingPage` y su botón en la tarjeta), `TrainingPage`, `TrainingSessionsPage`, `StatsPage` y sus endpoints/servicios, y los botones rotos de "Idiomas".
+2. **Sesión**: 30 ítems por defecto, reparto 50/50 fijo (sin control de proporción). Si falta de un lado se rellena con el otro.
+3. **Estructuras**: `almost` cuenta como acierto y muestra la corrección.
+4. **Móvil**: probablemente sí. La app debe funcionar bien en el teléfono (responsive real en sesiones, lector y menú); la optimización fina queda para la fase UX.
+5. **Acceso**: usuario y contraseña (tabla `User`, hash bcrypt, cookie de sesión firmada). Un solo usuario al principio, creado por script/seed; sin registro público. Los datos siguen siendo globales (no se particionan por usuario): si algún día entra otra persona habrá que añadir `userId` a los datos.
+6. **Dominio**: el de Railway (`*.up.railway.app`).
+7. **Commit de seguridad** hecho antes de borrar nada (ver `git log`).
+8. **Dictado**: módulo eliminado (2026-11-23). Las columnas `dictation*` de `Word` se borrarán en la misma migración que las tablas `TrainingSession*`.
