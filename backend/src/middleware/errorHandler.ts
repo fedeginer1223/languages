@@ -20,6 +20,10 @@ export function errorHandler(
     });
   }
 
+  if ((err as any).code === 'P2002') {
+    return res.status(409).json({ error: 'Already exists', fields: (err as any).meta?.target });
+  }
+
   if (err.name === 'PrismaClientKnownRequestError') {
     return res.status(400).json({
       error: 'Database error',

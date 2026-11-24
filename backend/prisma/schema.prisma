@@ -10,13 +10,15 @@ datasource db {
 model Language {
   id                        String   @id @default(uuid())
   name                      String
-  code                      String   @unique
+  code                      String
   forgetDays                Int      @default(180) // days after which mastered words decay back
   sections                  String   @default("vocabulary,verbs,essays") // enabled sections, comma-separated
   structureVariantsRequired Int      @default(2) // variants you must produce correctly per structure to level up its SRS
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
+  userId                    String
 
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   topics           Topic[]
   verbs            Verb[]
   essays           Essay[]
@@ -25,6 +27,8 @@ model Language {
   trainingSessions TrainingSession[]
   books            Book[]
 
+  @@unique([userId, code])
+  @@index([userId])
   @@map("languages")
 }
 
@@ -448,5 +452,6 @@ model User {
   passwordHash String
   createdAt    DateTime  @default(now())
   lastLoginAt  DateTime?
+  languages    Language[]
   @@map("users")
 }

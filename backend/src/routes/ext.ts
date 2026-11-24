@@ -13,16 +13,30 @@ const wrap =
   (req: Request, res: Response, next: NextFunction) =>
     fn(req, res).catch(next);
 
+/** Owner of the data exposed by the external API: EXTERNAL_API_USER_EMAIL, or the oldest user. */
+async function resolveOwnerId(): Promise<string | null> {
+  const email = process.env.EXTERNAL_API_USER_EMAIL?.trim();
+  const user = email
+    ? await prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } }, select: { id: true } })
+    : await prisma.user.findFirst({ orderBy: { createdAt: 'asc' }, select: { id: true } });
+  return user?.id ?? null;
+}
+
 async function findLanguage(code: string) {
+  const userId = await resolveOwnerId();
+  if (!userId) return null;
   return prisma.language.findFirst({
-    where: { code: { equals: code.trim(), mode: 'insensitive' } },
+    where: { userId, code: { equals: code.trim(), mode: 'insensitive' } },
   });
 }
 
 extRouter.get(
   '/languages',
   wrap(async (_req, res) => {
+    const userId = await resolveOwnerId();
+    if (!userId) return res.json([]);
     const langs = await prisma.language.findMany({
+      where: { userId },
       select: { id: true, code: true, name: true },
       orderBy: { name: 'asc' },
     });

@@ -2,8 +2,9 @@ import { prisma } from '../utils/prisma';
 import { CreateLanguageDto, UpdateLanguageDto } from '../types';
 
 export const languageService = {
-  async getAll() {
+  async getAll(userId: string) {
     const languages = await prisma.language.findMany({
+      where: { userId },
       include: {
         _count: {
           select: {
@@ -67,13 +68,16 @@ export const languageService = {
     return language;
   },
 
-  async create(data: CreateLanguageDto) {
+  async create(userId: string, data: CreateLanguageDto) {
     return prisma.language.create({
-      data,
+      data: { ...data, userId },
     });
   },
 
   async update(id: string, data: UpdateLanguageDto) {
+    // never let the body change ownership
+    delete (data as any).userId;
+    delete (data as any).id;
     return prisma.language.update({
       where: { id },
       data,

@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import { structureController } from '../controllers/structureController';
+import { ownedParam } from '../middleware/ownership';
 
 export const structureRouter = Router();
+
+structureRouter.param('languageId', ownedParam('language'));
+structureRouter.param('id', ownedParam('structure'));
+structureRouter.param('exampleId', ownedParam('structureExample'));
 
 // CRUD scoped by language
 structureRouter.get('/languages/:languageId/structures', structureController.list);

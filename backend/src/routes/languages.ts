@@ -4,8 +4,12 @@ import { topicController } from '../controllers/topicController';
 import { verbController } from '../controllers/verbController';
 import { essayController } from '../controllers/essayController';
 import { wordController } from '../controllers/wordController';
+import { ownedParam } from '../middleware/ownership';
 
 export const languageRouter = Router();
+
+languageRouter.param('id', ownedParam('language'));
+languageRouter.param('languageId', ownedParam('language'));
 
 languageRouter.get('/', languageController.getAll);
 languageRouter.post('/', languageController.create);

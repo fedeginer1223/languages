@@ -7,6 +7,7 @@ La API externa (`/api/v1/ext/*`) permite añadir vocabulario y estructuras desde
 - Define la variable de entorno `EXTERNAL_API_KEY` en `backend/.env` (local) o en las variables de Railway (producción). Usa una cadena larga y aleatoria, por ejemplo `openssl rand -hex 32`.
 - Envía la clave en cada petición con la cabecera `X-API-Key: <clave>` (también vale `Authorization: Bearer <clave>`).
 - Si `EXTERNAL_API_KEY` no está definida o está vacía, la API responde `503 {"error":"external_api_disabled"}`. Con una clave incorrecta responde `401`. Límite: 60 peticiones por minuto por clave (`429` si se supera).
+- Los datos que expone pertenecen a un único usuario: el de `EXTERNAL_API_USER_EMAIL` (opcional) o, si falta, el usuario más antiguo.
 - Cada petición deja una línea de log: `[ext] <método> <ruta> key=abcd… ip=… created=…` (solo los 4 primeros caracteres de la clave).
 
 URL base:

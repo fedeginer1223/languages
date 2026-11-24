@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { grammarController } from '../controllers/grammarController';
+import { ownedParam } from '../middleware/ownership';
 
 export const grammarRouter = Router();
+
+grammarRouter.param('languageId', ownedParam('language'));
+grammarRouter.param('id', ownedParam('grammar'));
 
 grammarRouter.get('/languages/:languageId/grammar', grammarController.list);
 grammarRouter.post('/languages/:languageId/grammar/extract', grammarController.importMarkdown);

@@ -9,7 +9,7 @@ import { CreateLanguageDto, UpdateLanguageDto } from '../types';
 export const languageController = {
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
-      const languages = await languageService.getAll();
+      const languages = await languageService.getAll(req.user!.id);
       res.json(languages);
     } catch (error) {
       next(error);
@@ -28,7 +28,7 @@ export const languageController = {
   async create(req: Request, res: Response, next: NextFunction) {
     try {
       const data: CreateLanguageDto = req.body;
-      const language = await languageService.create(data);
+      const language = await languageService.create(req.user!.id, data);
       res.status(201).json(language);
     } catch (error) {
       next(error);

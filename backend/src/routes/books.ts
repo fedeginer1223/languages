@@ -1,8 +1,12 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { bookService } from '../services/bookService';
+import { ownedParam } from '../middleware/ownership';
 
 export const bookRouter = Router();
+
+bookRouter.param('languageId', ownedParam('language'));
+bookRouter.param('bookId', ownedParam('book'));
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 40 * 1024 * 1024 } });
 
 bookRouter.post('/languages/:languageId/books', upload.single('file'), async (req, res, next) => {
